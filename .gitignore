@@ -1,0 +1,29 @@
+# Source video stays out of git. Its path lives in design/00_source/source.json.
+*.mp4
+*.mkv
+*.webm
+*.mov
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.pytest_cache/
+
+# Model weights and caches
+*.pt
+*.pth
+*.bin
+*.safetensors
+*.ckpt
+*.onnx
+models/
+.cache/
+huggingface/
+
+# Scratch
+design/.work/
+.DS_Store
+Thumbs.db

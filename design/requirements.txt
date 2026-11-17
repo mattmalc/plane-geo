@@ -1,0 +1,9 @@
+# Python 3.10 to 3.12 (ctranslate2 wheels). Create with: uv venv --python 3.12 design/.venv
+faster-whisper>=1.1
+av<19
+nvidia-cublas-cu12; sys_platform == "win32"
+nvidia-cudnn-cu12>=9,<10; sys_platform == "win32"
+imageio-ffmpeg>=0.5
+Pillow>=10
+numpy>=1.26
+markdown>=3.5

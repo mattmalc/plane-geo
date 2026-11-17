@@ -1,0 +1,4 @@
+* text=auto
+*.sh text eol=lf
+design/03_breakdowns/**/*.png filter=lfs diff=lfs merge=lfs -text
+design/03_breakdowns/**/*.jpg filter=lfs diff=lfs merge=lfs -text
