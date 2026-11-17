@@ -8,16 +8,16 @@ Each fact carries the tag of its source. [shown] means visible on screen. [state
 
 **What it is.** A geolocation investigation of a security-camera video. The picture never changes and shows only sky and trees [stated 00:00:17]. The only given facts are "In continental US" and "Filmed 9/8/26" [shown 00:00:27]. The creator's earlier thunder-based method reached about 5 km [stated 00:00:43]. This method uses aircraft Doppler curves in the audio. They are inaudible and appear only in a zoomed, high-resolution spectrogram [stated 00:01:14] [shown 00:01:45].
 
-**What it does.** Two propeller-aircraft curves sit 920 s apart, and no aircraft is heard between them [shown 00:02:56] [stated 00:11:41]. The pipeline runs in six steps:
+**What it does.** Two propeller-aircraft curves, E1 and E2, sit 920 s apart, and no aircraft is heard between them [shown 00:02:56] [stated 00:11:41]. The pipeline runs in six steps:
 
 1. Download ADS-B tracks for every flight over the continental US on September 8 and drop known jet types [stated 00:03:04] [stated 00:04:05].
 2. Fit an ideal Doppler curve to each event and record ranges for speed, CPA slant distance, CPA time, and fundamental frequency f0 [stated 00:09:12]. CPA is the closest point of approach.
-3. Keep ground points that hear a flight at the event 1 speed and distance, then another at the event 2 speed and distance 920 ± 5 s later, and no flight between them. About 15,000 points remain across the US [stated 00:12:49].
+3. Keep ground points that hear a flight at the E1 speed and distance, then another at the E2 speed and distance 920 ± 5 s later, and no flight between them. About 15,000 points remain across the US [stated 00:12:49].
 4. For each surviving point and flight, model the exact curve the point would hear, from the aircraft velocity at the moment each sound left it [stated 00:17:01].
-5. Score each model against the spectrogram. Event 1 gets a sweep of time offset and f0. Event 2 gets an f0 sweep only and keeps the time offset the flight geometry predicts [stated 00:19:28]. Survivors are rescored on a 100 m grid [stated 00:20:27].
+5. Score each model against the spectrogram. E1 gets a sweep of time offset and f0. E2 gets an f0 sweep only and keeps the time offset the flight geometry predicts [stated 00:19:28]. Survivors are rescored on a 100 m grid [stated 00:20:27].
 6. Keep the best point per flight pair and rank the pairs [shown 00:21:29].
 
-**Final result.** Flights 1100069709 and 1100048665 lead with a combined score of 20.48 at 40.876466, -73.524951. The next pair scores 15.25 [shown 00:21:39] [shown 00:21:54]. A separate search on one minute of audio with a known time of 8:37 PM UTC ranks a point 610 m away first, from a different flight [shown 00:23:31] [stated 00:24:01] [inferred M11-I02]. From a finer heat map the creator takes 40.8767282, -73.5264340 [shown 00:25:27]. Google Maps places it in Oyster Bay, New York [shown 00:25:30]. Street View at 19 Bayview Ave shows the tree line from the footage and the camera on a utility pole [shown 00:26:05]. He claims a result "within a couple hundred feet" from one minute of inaudible audio [stated 00:25:01]. The work took months and over 5,000 lines of code, with 50 GB Parquet files and countrywide DEMs [stated 00:02:00].
+**Final result.** Flights 1100069709 and 1100048665 lead with a combined score of 20.48 at 40.876466, -73.524951. The next pair scores 15.25 [shown 00:21:39] [shown 00:21:54]. A separate search on one minute of audio with a known time of 8:37 PM UTC ranks a point 610 m away first, from a different flight [shown 00:23:31] [stated 00:24:01] [inferred M11-I02]. From a finer heat map the creator takes 40.8767282, -73.5264340 [shown 00:25:27]. Google Maps places it in Oyster Bay, New York [shown 00:25:30]. Street View at 19 Bayview Ave shows the tree line from the footage and the camera on a utility pole [shown 00:26:05]. The creator claims a result "within a couple hundred feet" from one minute of inaudible audio [stated 00:25:01]. The work took months and over 5,000 lines of code, with 50 GB Parquet files and countrywide DEMs [stated 00:02:00].
 
 The video ends with countermeasure tests. A high-pass filter, louder masking sound, and phone-call processing all leave the curve visible. The suggested defences are cuts that break the offset between events, and extra noise cancellation [stated 00:27:06] [stated 00:28:04].
 
@@ -199,7 +199,7 @@ Video 00:02:37 to 00:04:14. System S1.
 4. Join `typecode` to the ICAO Type Designator. Remove flights whose Engine Type is Jet and keep unknown types [stated 00:04:05].
 5. Plot the tracks in QGIS. Whole trails reach Hawaii and other countries [stated 00:03:15].
 
-**Acceptance.** A per-flight table with the nine columns shown at 00:03:56, a tracks table with the nine fields of `standardize_rows`, and a map of non-jet tracks like the one at 00:04:12 [shown].
+**Acceptance.** The run yields a per-flight table with the nine columns shown at 00:03:56, a tracks table with the nine fields of `standardize_rows`, and a map of non-jet tracks like the one at 00:04:12 [shown].
 
 ![Phase 1 sweep code](../03_breakdowns/M2/frames/M2_000309.png)
 ![Per-flight table with typecode](../03_breakdowns/M2/frames/M2_000356.png)
@@ -256,7 +256,7 @@ Video 00:08:21 to 00:10:38. System S2.
 1. Open the event window. For E2 the window is 01:50:30 to 01:52:15 elapsed [shown 00:08:57].
 2. Move v to set the size of the drop and d to set its steepness [stated 00:08:58].
 3. Fit the receding side. The approaching side does not match an ideal curve [stated 00:09:51].
-4. Bracket the speed generously. 100 m/s fits the receding side, and 69.5 m/s clearly misses [shown 00:10:06] [shown 00:10:13].
+4. Bracket the speed generously. 100 m/s fits the receding side, and 69.5 m/s misses [shown 00:10:06] [shown 00:10:13].
 5. Trade t0 against f0. Moving t0 from 1:51:15.90 to 1:51:12.90 and f0 from 131.5 to 133.5 Hz still fits [shown 00:10:30].
 6. Take snapshots at the ends of the range. The log reports MIN, MAX, and BEST as the midpoint [shown 00:10:18] [inferred M5-I13].
 7. Repeat for E1.
@@ -299,7 +299,7 @@ Video 00:13:35 to 00:16:45. System S5.
 3. Apply `f = f0 * c / (c + v_r)` [shown 00:16:07].
 4. Repeat for every time step [stated 00:16:39].
 
-**Acceptance.** With f0 130 Hz and c 343 m/s, the demo values reproduce. A v_r of 0.00 m/s gives 130.00 Hz, 62.73 m/s gives 109.90 Hz, and 130.80 m/s gives 94.11 Hz [shown 00:16:25] [shown 00:16:34]. This version uses the state at reception time, which the creator says would make the search fail [stated 00:16:43]. M8 replaces it.
+**Acceptance.** With f0 130 Hz and c 343 m/s, the demo values reproduce. A v_r of 0.00 m/s gives 130.00 Hz, 62.73 m/s gives 109.90 Hz, and 130.80 m/s gives 94.11 Hz [shown 00:16:25] [shown 00:16:34]. This version uses the state at reception time. The creator says that choice would make the search fail [stated 00:16:43]. M8 replaces it.
 
 ![Observer to the side, radial velocity near zero](../03_breakdowns/M7/frames/M7_001519.png)
 ![A bent track changes the curve shape](../03_breakdowns/M7/frames/M7_001535.png)
@@ -430,7 +430,7 @@ The video shows parts of one script, `v31.py`, plus tool screens and readouts. C
 | f0 sweep | ±2 Hz in 0.5 Hz steps | S6 | [inferred M9-I11] |
 | Single-event time window | 1 hour | S1 | [shown 00:24:58], centring [inferred M11-I09] |
 
-A rebuild can hold the event values in one config file. Values carry their tags.
+A rebuild can hold the event values in one config file. Each value carries its tag as a comment.
 
 ```toml
 [recording]
@@ -463,7 +463,7 @@ traced_window_s = [4852, 4910]  # [shown 00:23:31]
 
 ### S1. ADS-B ingest and aircraft filtering
 
-**Data shapes.** Field names are [shown 00:03:13] [shown 00:03:56] [shown 00:04:26]. Types and units are [inferred M2-I01] [inferred M2-I02] [inferred M3-I03]. `Segment` is [inferred M6-I01].
+**Data shapes.** The field names come from the screen [shown 00:03:13] [shown 00:03:56] [shown 00:04:26]. The types and units are guesses [inferred M2-I01] [inferred M2-I02] [inferred M3-I03]. The `Segment` record is a guess too [inferred M6-I01].
 
 ```text
 FlightMeta  flightid:int64  registration:str  typecode:str  callsign:str
@@ -514,9 +514,9 @@ The query log makes Phase 1 resumable. `load_query_log()` returns the finished k
 
 The shown code copies `timestamp_ms` into `timestamp` without converting units [shown 00:03:13].
 
-**Jet filter.** `keep(flight) = EngineType(typecode) != "Jet"`. Missing and unknown type codes stay, because the lookup has gaps [stated 00:04:05]. Whether turboprops and helicopters stay is [inferred M2-I08].
+**Jet filter.** `keep(flight) = EngineType(typecode) != "Jet"`. Missing and unknown type codes stay, because the lookup has gaps [stated 00:04:05]. Whether turboprops and helicopters stay is a guess [inferred M2-I08].
 
-**1 s tracks and velocity segments.** [inferred M3-I03] [inferred M6-I12] [inferred M7-I01]
+**1 s tracks and velocity segments.** The code below is a reconstruction [inferred M3-I03] [inferred M6-I12] [inferred M7-I01].
 
 ```python
 def resample_1s(tp):                                   # tp: TrackPoint rows of one flight, sorted
@@ -551,7 +551,7 @@ def velocity_segments(t, gs_kt, valid, v_min, v_max):
 
 The hop is not shown [inferred M1-I06]. At 16 kHz a 16384-sample window spans 1.02 s with 0.98 Hz bins [inferred M1-I07].
 
-**Ideal constant-velocity model.** The Doppler Curve Fit page has four sliders [shown 00:08:57]: `f0 (fundamental freq)`, `v (plane speed)`, `d (slant distance)`, `t0 (CPA time)`. It prints `f_pre (approach)`, `f_post (recede)`, and `max RoC`. Slider steps are [inferred M5-I15]. The formulas below are [inferred M5-I07] [inferred M5-I08]. A rerun of these formulas reproduced all 13 rows of the M5 readout table, 11 distinct settings, and snapshot C from M7, with a worst error of 0.005. The sign convention matches S5, where v_r is positive when the aircraft recedes.
+**Ideal constant-velocity model.** The Doppler Curve Fit page has four sliders [shown 00:08:57]: `f0 (fundamental freq)`, `v (plane speed)`, `d (slant distance)`, `t0 (CPA time)`. It prints `f_pre (approach)`, `f_post (recede)`, and `max RoC`. The slider steps are a guess [inferred M5-I15]. The formulas below are reconstructions [inferred M5-I07] [inferred M5-I08]. A rerun of these formulas reproduced all 13 rows of the M5 readout table, 11 distinct settings, and snapshot C from M7, with a worst error of 0.005. The sign convention matches S5, where v_r is positive when the aircraft recedes.
 
 ```python
 def ideal_curve(t, f0, v, d, t0, c=343.0):
@@ -567,7 +567,7 @@ def readouts(f0, v, d, c=343.0):
     return f_pre, f_post, max_roc
 ```
 
-Whether the page applies emission time is not shown [inferred M5-I09]. **Take snapshot** logs the current sliders. The log header reads "MIN/MAX auto-calculated, BEST = midpoint" [shown 00:10:18]. Taking a snapshot at each end of the loosest acceptable fit gives the range [inferred M5-I02] [inferred M5-I13]. The fit spectrogram shows 0 to -80 dB [shown 00:08:57]. Its FFT settings are [inferred M5-I14].
+Whether the page applies emission time is not shown [inferred M5-I09]. **Take snapshot** logs the current sliders. The log header reads "MIN/MAX auto-calculated, BEST = midpoint" [shown 00:10:18]. Taking a snapshot at each end of the loosest acceptable fit gives the range [inferred M5-I02] [inferred M5-I13]. The fit spectrogram shows 0 to -80 dB [shown 00:08:57]. Its FFT settings are a guess [inferred M5-I14].
 
 **Measurement record.** One record per event feeds S1, S4, and S6.
 
@@ -595,9 +595,9 @@ up    = alt_ft * FT_TO_M - elevation(lat_cand, lon_cand)
 dist  = sqrt(east^2 + north^2 + up^2), floored at 1e-6
 ```
 
-ADS-B altitude is above sea level [stated 00:06:07], so the DEM supplies the observer height [stated 00:06:18]. How the creator treats barometric altitude is [inferred M3-I21]. Whether the CPA stage used the same flat-earth distance is [inferred M3-I24].
+ADS-B altitude is above sea level [stated 00:06:07], so the DEM supplies the observer height [stated 00:06:18]. Section 8 guesses how the creator treats barometric altitude [inferred M3-I21] and whether the CPA stage used the same flat-earth distance [inferred M3-I24].
 
-**CPA and delayed CPA.** The creator names these quantities but shows no equations. The forms below are [inferred M3-I11] [inferred M3-I12] [inferred M3-I13] [inferred M3-I19].
+**CPA and delayed CPA.** The creator names these quantities but shows no equations. The forms below are reconstructions [inferred M3-I11] [inferred M3-I12] [inferred M3-I13] [inferred M3-I19].
 
 ```python
 def cpa_hit(track1s, cand, c=C_SOUND):
@@ -620,11 +620,11 @@ east_ms = wind_speed_ms * math.sin(toward_rad)
 north_ms = wind_speed_ms * math.cos(toward_rad)
 ```
 
-The video never mentions wind. The data source is [inferred M1-I13].
+The video never mentions wind. The data source is a guess [inferred M1-I13].
 
 ### S4. Candidate grid and constraint filters
 
-**Data shapes.** [inferred M3-I23] [inferred M3-I27] [inferred M4-I03]
+**Data shapes.** These records are reconstructions [inferred M3-I23] [inferred M3-I27] [inferred M4-I03].
 
 ```text
 GridPoint  ix:int  iy:int  (indices on one shared 200 m lattice)  lat  lon  ground_elevation_m
@@ -657,7 +657,7 @@ def is_silent(all_props, a, b):
                    for h in all_props)
 ```
 
-The order is fixed. A point must hear green, then pink 920 s later [stated 00:10:49]. The silence test needs hits from every propeller flight within 7800 m, the largest event distance, and not only hits from the velocity segments [inferred M6-I16]. The window bounds of the silence test are [inferred M6-I18].
+The order is fixed. A point must hear green, then pink 920 s later [stated 00:10:49]. The silence test needs hits from every propeller flight within 7800 m, the largest event distance, and not only hits from the velocity segments [inferred M6-I16]. The window bounds of the silence test are a guess [inferred M6-I18].
 
 **Candidate counts.**
 
@@ -723,7 +723,7 @@ def compute_dense_doppler_curve(track_arrs, cand_lat, cand_lon, frame_centers_s,
                                 dt_range, oversample=3):
 ```
 
-The unit vector points from the candidate to the aircraft. So `range_rate` is positive when the aircraft recedes, and `f = f0 * doppler_factor` [shown 00:02:08] [inferred M7-I09]. Velocity comes from ADS-B ground speed, track, and vertical speed, not from position differences [shown 00:02:08]. The model returns a factor rather than a frequency, so an f0 sweep only rescales one array. The body of `compute_dense_doppler_curve` is not shown. Its parameter meanings are [inferred D-03].
+The unit vector points from the candidate to the aircraft. So `range_rate` is positive when the aircraft recedes, and `f = f0 * doppler_factor` [shown 00:02:08] [inferred M7-I09]. Velocity comes from ADS-B ground speed, track, and vertical speed, not from position differences [shown 00:02:08]. The model returns a factor rather than a frequency, so an f0 sweep only rescales one array. The body of `compute_dense_doppler_curve` is not shown. Section 8 guesses its parameter meanings [inferred D-03].
 
 **Equations shown in the demos** [shown 00:16:07] [shown 00:17:14]:
 
@@ -733,7 +733,7 @@ f(t_r) = f0 * c / (c + v_r(t_e))
 v_r = v . (p_aircraft - p_observer) / |p_aircraft - p_observer|     [inferred M7-I02, M8-I06]
 ```
 
-**State interpolation.** `interpolate_state_vec(track_arrs, t)` returns `lat`, `lon`, `alt_ft`, `gs_kt`, `vs_fpm`, `track_deg`, and `valid` at arbitrary times [shown 00:02:08]. The method is [inferred M7-I01] [inferred M8-I10]:
+**State interpolation.** `interpolate_state_vec(track_arrs, t)` returns `lat`, `lon`, `alt_ft`, `gs_kt`, `vs_fpm`, `track_deg`, and `valid` at arbitrary times [shown 00:02:08]. The method below is a reconstruction [inferred M7-I01] [inferred M8-I10]:
 
 ```python
 def interpolate_state_vec(arrs, t):
@@ -761,11 +761,11 @@ def interpolate_state_vec(arrs, t):
 
 ### S6. Spectrogram scoring and ranking
 
-**Spectrogram.** Scoring panels plot elapsed recording time against frequency, with brightness in dB, such as -39.7 [shown 00:19:27]. The E1 panel spans 5690 to 5875 s and about 70 to 195 Hz. The E2 panel spans about 6630 to 6735 s and 90 to 195 Hz [shown 00:19:27]. FFT settings are [inferred M9-I14]. Score normalisation is [inferred M9-I13].
+**Spectrogram.** Scoring panels plot elapsed recording time against frequency, with brightness in dB, such as -39.7 [shown 00:19:27]. The E1 panel spans 5690 to 5875 s and about 70 to 195 Hz. The E2 panel spans about 6630 to 6735 s and 90 to 195 Hz [shown 00:19:27]. The FFT settings [inferred M9-I14] and the score normalisation [inferred M9-I13] are guesses.
 
 **Placement.** Each candidate has a delayed CPA from geometry for each flight, T1 and T2 in UTC. E1's measured audio CPA time is A1 = 5752 s. The mapping from UTC to audio time is `a = A1 + (t - T1) + dt` for both events, with one shared `dt` [stated 00:19:04] [shown 00:19:27]. E2 therefore lands at `A1 + (T2 - T1) + dt`, and only geometry decides its offset from E1.
 
-**Locked two-event score.** The structure follows the narration [stated 00:19:12] [stated 00:19:30] [stated 00:20:00]. Sampling, normalisation, and sweep ranges are [inferred M9-I04] [inferred M9-I05] [inferred M9-I06] [inferred M9-I10] [inferred M9-I11] [inferred M9-I12] [inferred M9-I13]. Scored windows are [inferred D-04].
+**Locked two-event score.** The structure follows the narration [stated 00:19:12] [stated 00:19:30] [stated 00:20:00]. The sampling, normalisation, and sweep ranges are guesses [inferred M9-I04] [inferred M9-I05] [inferred M9-I06] [inferred M9-I10] [inferred M9-I11] [inferred M9-I12] [inferred M9-I13]. The scored windows are a guess too [inferred D-04].
 
 ```python
 DT = np.arange(-3.0, 3.0001, 0.05)       # s, shared clock-anchor offset
@@ -793,7 +793,7 @@ def score_pair(P, F1, F2, E1, E2, Z1, Z2, spec1, spec2, step):
     return s1, s2, s1 + s2               # score_1, score_2, match_score
 ```
 
-The video says the score sums brightness [stated 00:18:22]. The pseudocode divides by the number of bins scored, the breakdown's guess for why good scores sit near 10 [inferred M9-I13]. E1 is scored in isolation and E2 is locked to E1's best `dt` [shown 00:21:07]. The function in the creator's code is `curve_match_scores_locked_spectrogram` in `1_2b_v7.py` [shown 00:21:07]. `match_score = score_1 + score_2` [shown 00:21:39].
+The video says the score sums brightness [stated 00:18:22]. The pseudocode divides by the number of bins scored. That division is the breakdown's guess for why good scores sit near 10 [inferred M9-I13]. E1 is scored in isolation and E2 is locked to E1's best `dt` [shown 00:21:07]. The function in the creator's code is `curve_match_scores_locked_spectrogram` in `1_2b_v7.py` [shown 00:21:07]. `match_score = score_1 + score_2` [shown 00:21:39].
 
 **Densify to 100 m.** On the 200 m grid the true point can sit up to 141 m, half a cell diagonal, from the nearest grid point [stated 00:20:22] [inferred M9-I07]. Survivors are resampled to 100 m and rescored [stated 00:20:27]. Four points per cell would give about 60,000, not the stated 30,000 to 40,000, so the exact construction is open [inferred M9-I16]. New points need fresh S3 and S5 runs [inferred M9-I03].
 
@@ -813,9 +813,9 @@ best = (scores.sort("match_score", descending=True)
 | 4 | 1100065108 | 1100061857 | 42.012829, -81.426671 | 14.87 | 8.33 | 6.54 | [shown 00:22:19] |
 | 5 | 1100069287 | 1100070751 | 43.437551, -79.358276 | 14.85 | 5.75 | 9.10 | [shown 00:22:20], E2 [inferred M10-I04] |
 
-**Fine rerun.** With the winning flights known, the creator rescores at much finer resolution for those flights only and draws heat maps for E1, E2, and both [stated 00:22:26]. Spacing and extent are [inferred M10-I12]. The combined map is [inferred M10-I14].
+**Fine rerun.** With the winning flights known, the creator rescores at much finer resolution for those flights only and draws heat maps for E1, E2, and both [stated 00:22:26]. Section 8 guesses the spacing and extent [inferred M10-I12] and how the combined map is built [inferred M10-I14].
 
-**Single-event line score.** The score is negative and the best is closest to zero. The top point scores -1.74 and the worst -137.78 [shown 00:23:22]. The metric is [inferred M11-I06] [inferred M11-I11]:
+**Single-event line score.** The score is negative and the best is closest to zero. The top point scores -1.74 and the worst -137.78 [shown 00:23:22]. The metric below is a reconstruction [inferred M11-I06] [inferred M11-I11]:
 
 ```python
 def line_score(P, F, E0, line, step):
@@ -908,7 +908,7 @@ Every best guess below is [inferred]. Ids M#-I## come from the breakdowns. Ids D
 
 | Ids | Question | Best guess | Confidence | Source |
 |---|---|---|---|---|
-| M2-I04 | Which `pyfr24` calls, authentication, and FR24 access tier produced the trails? | The `pyfr24` FR24 API client with an API token, since historical trails need API access. This sits uneasily with "did not use the paid API" [stated 00:02:57]. | low | [M2](../03_breakdowns/M2/breakdown.md) |
+| M2-I04 | Which `pyfr24` calls, authentication, and FR24 access tier produced the trails? | The `pyfr24` FR24 API client with an API token, since historical trails need API access. This seems to conflict with "did not use the paid API" [stated 00:02:57]. | low | [M2](../03_breakdowns/M2/breakdown.md) |
 | M2-I05 | Values of `BBOX_TARGET`, `FLIGHT_LIMIT`, `MINUTES_BETWEEN_SNAPSHOTS`, `SWEEP_START_LOCAL`, `SWEEP_END_LOCAL`. | A box of about 24 to 50 N and -125 to -66, snapshots every 5 to 15 min, sweep over the local day of September 8. | low | [M2](../03_breakdowns/M2/breakdown.md) |
 | M2-I06 | `Phase1RateLimiter` settings. | A fixed delay of about 1 s per request. | low | [M2](../03_breakdowns/M2/breakdown.md) |
 | M2-I07 | How the ICAO table was exported and joined. | Scraped or downloaded as CSV, joined on `typecode` = Type Designator, Engine Type "Jet" dropped. | medium | [M2](../03_breakdowns/M2/breakdown.md) |

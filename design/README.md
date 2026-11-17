@@ -11,12 +11,12 @@ This pipeline turns the source video into `04_design/design_document.md`, a docu
 | 4. Design document | `04_design/design_document.md`, `design_document.html` | One agent with `pipeline/prompts/stage4_design_doc.md`, then `pipeline/render_doc.py` |
 | Verify | exit code 0 | `pipeline/verify.py` |
 
-`logs/decisions.tsv` records every judgment call, one row per call. `logs/errors.log` records steps that failed twice. `logs/run_summary.md` summarises the last full run.
+Agents append one row per judgment call to `logs/decisions.tsv` through `pipeline/log.sh`. `logs/run_summary.md` summarises the last full run: milestones, frames per milestone, open questions per system, and any stage that failed or ran degraded. `logs/errors.log` collects failures: a Stage 3 command that failed twice, or a Stage 1 fallback from CUDA to CPU.
 
 ## Requirements
 
-- Python 3.10 to 3.12. The pinned `ctranslate2` wheels do not support 3.13 or later yet.
-- An NVIDIA GPU is optional. With one, Stage 1 runs Whisper `large-v3` on CUDA. Without one, it falls back to `medium` on CPU, which is much slower.
+- Python 3.10 to 3.12. `faster-whisper` installs `ctranslate2`, whose wheels do not support 3.13 or later.
+- An NVIDIA GPU is optional. With one, Stage 1 runs Whisper `large-v3` on CUDA. Without one, it falls back to `medium` on CPU, which is slower.
 - Git LFS, which stores the frames.
 - The source video on local disk. The pipeline never downloads it. This run fetched it with [yt-tools](https://github.com/mattmalc/yt-tools) (`yt-tools video UytYrhYLOKI --max-height 720`).
 
@@ -40,6 +40,8 @@ PY design/pipeline/render_doc.py                           # after stage 4
 PY design/pipeline/verify.py                               # finish checks 1 to 4
 ```
 
+`source.py` reads the yt-tools `info.json` beside the video. To read one from elsewhere, pass `--info PATH`.
+
 Stages 2, 3, and 4 need judgment, so an agent runs them. To rerun one, give a coding agent (Claude Code here) the matching brief from `pipeline/prompts/`. For Stage 3, replace `{MID}` with the milestone id. Each brief names the files the stage may write. A Stage 3 worker starts with `frames.py clean M#`, so a rerun replaces that milestone's frames and leaves the others alone.
 
 `pipeline/run_stage.sh "<message>" <paths>` commits and pushes one stage's outputs.
@@ -47,12 +49,12 @@ Stages 2, 3, and 4 need judgment, so an agent runs them. To rerun one, give a co
 ## Conventions
 
 - Timestamps are `HH:MM:SS`. Frames are `03_breakdowns/M#/frames/M#_HHMMSS.png`.
-- Every fact in a breakdown is tagged `[shown]` (on screen), `[stated]` (said aloud or in the description), or `[inferred]` (reasoned). Each `[inferred]` item has an id such as `M3-I04`. `verify.py` checks that every id appears in the design doc's Open Questions section.
-- Markdown cannot carry styling. `render_doc.py` writes `design_document.html` with the required look: white background, Arial 10pt, compact spacing, and greyscale headings, with colour only inside Mermaid diagrams.
+- Every fact in a breakdown is tagged `[shown]` (on screen), `[stated]` (said aloud or in the description), or `[inferred]` (reasoned). Each `[inferred]` item has an id such as `M3-I04`. The design doc lists every id in section 8, "Open questions and assumptions".
+- Markdown cannot carry styling. `render_doc.py` writes `design_document.html` with the required look: white background, Arial 10pt, compact spacing, and greyscale headings, with colour only inside Mermaid diagrams. The page loads Mermaid from a CDN, so the diagram draws only with network access.
 
 ## What verify.py checks
 
 1. Every milestone in `milestones.json` has a `breakdown.md`.
 2. Every frame path referenced in a breakdown or the design doc exists.
 3. The design doc has all 10 required sections.
-4. Every `[inferred]` id in the breakdowns appears in the design doc's Open Questions section.
+4. Every `[inferred]` item in the breakdowns has an `M#-I##` id, and every id appears in section 8 of the design doc.

@@ -2,7 +2,7 @@
 
 A rebuild of the project in [I discovered a sound that leaks your exact location (and it's everywhere)](https://www.youtube.com/watch?v=UytYrhYLOKI) by colsto.
 
-The video locates where an audio recording was made from the aircraft audible in its background. It measures the Doppler shift of each passing plane in a spectrogram. It then matches those measurements against public ADS-B flight tracks over a grid of candidate locations, and reports the cells that fit.
+The video finds where a security-camera recording was made. The propeller aircraft in its audio cannot be heard, but they show up as Doppler curves in a zoomed spectrogram. The creator measures each curve's speed, slant distance, closest-approach time, and fundamental frequency. The creator then filters ADS-B flight tracks for the filming day over a grid of candidate ground points. For each surviving point and flight, the pipeline models the curve that point would hear and scores it against the spectrogram. The best-scoring flight pair leads to Oyster Bay, New York, where Street View shows the camera on a utility pole.
 
 This repo holds two things:
 

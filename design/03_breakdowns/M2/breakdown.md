@@ -21,7 +21,7 @@ Done means:
 
 1. Find the two Doppler curves in the recording spectrogram. They become the two "events" 920 s apart. [shown] [00:02:42] ![](frames/M2_000242.png) [00:02:56] ![](frames/M2_000256.png)
 2. Pick the ADS-B source. Flightradar24 is shown as the example of live ADS-B. Its sidebar offers a paid "B2B: Explore our flight data API". [shown] [00:02:47] ![](frames/M2_000247.png) [00:03:02] ![](frames/M2_000302.png) The creator did not use the paid API. [stated] [00:02:57]
-3. Use the Python package `pyfr24` to scrape the data. [shown] [00:03:04] ![](frames/M2_000304.png) He ran it for a few hours. [stated] [00:03:04]
+3. Use the Python package `pyfr24` to scrape the data. [shown] [00:03:04] ![](frames/M2_000304.png) The creator ran it for a few hours. [stated] [00:03:04]
 4. Phase 1, flight-ID discovery sweep: step through timestamps across the day, query a target bounding box at each, split any box that hits the flight cap into north and south halves, and save the unique flight IDs. [shown] [00:03:09] ![](frames/M2_000309.png)
 5. Drop flights never seen airborne (`max_alt` not > 0). Write the rest to `FLIGHT_IDS_AIRBORNE_CSV`. [shown] [00:03:11] ![](frames/M2_000311.png)
 6. Phase 2: for each airborne flight ID, fetch the full trail, explode it into points, normalise column names, and append to a tracks CSV. Log each fetch so reruns skip done work. [shown] [00:03:11] ![](frames/M2_000311.png) [00:03:13] ![](frames/M2_000313.png)
