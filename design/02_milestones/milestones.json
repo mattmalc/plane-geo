@@ -1,0 +1,971 @@
+{
+  "project_summary": "A geolocation investigation that finds where a security-camera recording was made using only aircraft Doppler curves in its audio. The only known facts are the date, September 8, and that it was filmed somewhere in the continental US. The recording holds two faint propeller-plane Doppler curves 920 seconds apart and no other aircraft between them. The creator downloads a day of ADS-B flight data for the continental US, drops known jet types, and lays candidate observer points on a grid around each flight. CPA is the closest point of approach. For each point he computes the delayed CPA time, when the CPA sound reaches the observer, from the 3D slant distance. A DEM gives ground elevation and the speed of sound gives the delay. Speed, slant distance, CPA time, and fundamental frequency measured from each curve, plus a silence constraint between the events, cut the candidates to about 15,000. He then models the exact curve each candidate would hear from the radial velocity at emission time, scores it against the spectrogram with a locked two-event method on a 100 m grid, and ranks the best point per flight pair. A separate run on a one-minute clip with a known time ranks the same coordinate first, and Street View confirms the camera. The video ends by testing countermeasures. The description states that the code and tools are not released.",
+  "systems": [
+    {
+      "id": "S1",
+      "name": "ADS-B ingest and aircraft filtering",
+      "description": "Downloads every flight over the continental US for the target day with a Python scraping package, keeping whole flight paths with position, altitude, speed, timestamp, and type code. Drops known jet types using an ICAO type-code lookup table. Later cuts flight segments to the measured velocity range and, when the recording time is known, to that time window."
+    },
+    {
+      "id": "S2",
+      "name": "Spectrogram measurement",
+      "description": "Finds the faint Doppler curves by zooming into the right frequency band at high resolution. Fits an ideal constant-velocity Doppler curve to each event and records generous ranges for velocity, CPA slant distance, CPA time in the audio, and fundamental frequency. Traces a very faint curve as a line."
+    },
+    {
+      "id": "S3",
+      "name": "Acoustic geometry and propagation model",
+      "description": "Finds each observer's CPA to a flight and the 3D slant distance, using ADS-B altitude above sea level and DEM ground elevation. Converts distance to sound travel delay, which turns CPA time into delayed CPA time and gives the emission time the Doppler model needs."
+    },
+    {
+      "id": "S4",
+      "name": "Candidate grid and constraint filters",
+      "description": "Lays observer points on a 200 m grid, first out to 10 km from each track and later only at the measured slant distance. Keeps points that hear two flights 920 seconds apart, within about 5 seconds, at the measured speeds and distances, and that hear no other flight between the two events."
+    },
+    {
+      "id": "S5",
+      "name": "Doppler curve forward model",
+      "description": "For each candidate point and flight, computes the frequency the observer would hear over time. Each time step uses the radial velocity at the moment the sound was emitted, taken from interpolated ADS-B, in the Doppler equation with the measured fundamental frequency."
+    },
+    {
+      "id": "S6",
+      "name": "Spectrogram scoring and ranking",
+      "description": "Scores each modelled curve by the spectrogram brightness it covers, or by distance to a traced line. Sweeps CPA time offset and fundamental frequency for event 1, locks event 2's offset to the flight geometry, refines survivors to a 100 m grid, and ranks the best point per flight pair."
+    },
+    {
+      "id": "S7",
+      "name": "Map review and ground-truth confirmation",
+      "description": "Shows scored points and per-flight heat maps in QGIS, then checks the top coordinate in Google Maps Street View against the source footage."
+    },
+    {
+      "id": "S8",
+      "name": "Countermeasure tests",
+      "description": "Tests whether high-pass filtering, masking noise, cuts, and phone-call compression remove the Doppler signal, by looking for the curve in the spectrogram afterwards."
+    }
+  ],
+  "milestones": [
+    {
+      "id": "M1",
+      "title": "Problem setup and finding the Doppler curves",
+      "start": "00:00:17",
+      "end": "00:02:37",
+      "summary": "The target is a security-camera video in which nothing changes visually. The only facts given are the date, September 8, and that it was filmed in the continental US. A previous thunder-based method reached about 5 km precision. Two audio sections play and the signal is inaudible. In a spectrogram, with time on x and frequency on y, it only appears after zooming into the right frequency band and raising the resolution. It is a Doppler curve from an aircraft. A second, louder curve with harmonics follows later, and these two curves are the evidence for the search. The creator states the project took months and over 5,000 lines of code, with 50 GB Parquet files, 3D physics modelling, and countrywide DEMs.",
+      "systems": [
+        "S2"
+      ],
+      "parts_tools_software": [
+        "Source recording, a static security-camera video filmed September 8 in the continental US",
+        "Spectrogram viewer with frequency zoom and resolution control, not named",
+        "Code base of over 5,000 lines, stated",
+        "Parquet files of about 50 GB, stated",
+        "Countrywide DEMs, stated"
+      ],
+      "visual_moments": [
+        {
+          "t": "00:00:17",
+          "reason": "Target security-camera footage on screen."
+        },
+        {
+          "t": "00:00:27",
+          "reason": "The only known facts, date and continental US, likely as on-screen text."
+        },
+        {
+          "t": "00:00:40",
+          "reason": "Reference to the earlier thunder geolocation video."
+        },
+        {
+          "t": "00:00:50",
+          "reason": "Thunder method's 5 km precision, likely on a map."
+        },
+        {
+          "t": "00:00:59",
+          "reason": "Precision of the Doppler method shown for comparison."
+        },
+        {
+          "t": "00:01:20",
+          "reason": "Two audio sections playing, with no audible plane."
+        },
+        {
+          "t": "00:01:31",
+          "reason": "Recording opened in a spectrogram at full frequency range."
+        },
+        {
+          "t": "00:01:34",
+          "reason": "Spectrogram axes explained."
+        },
+        {
+          "t": "00:01:43",
+          "reason": "Zoom into the frequency band that holds the curve."
+        },
+        {
+          "t": "00:01:45",
+          "reason": "Higher resolution reveals the faint curve."
+        },
+        {
+          "t": "00:01:49",
+          "reason": "First Doppler curve visible."
+        },
+        {
+          "t": "00:02:07",
+          "reason": "Project-scale claims, likely over B-roll of data and DEMs."
+        },
+        {
+          "t": "00:02:23",
+          "reason": "Event 1 curve in the full recording."
+        },
+        {
+          "t": "00:02:26",
+          "reason": "Event 2 curve, louder, with harmonics above it."
+        },
+        {
+          "t": "00:02:31",
+          "reason": "Zoomed-out view with a possible third curve."
+        }
+      ]
+    },
+    {
+      "id": "M2",
+      "title": "Download ADS-B data and keep propeller aircraft",
+      "start": "00:02:37",
+      "end": "00:04:14",
+      "summary": "The first idea is to keep only places that heard a plane and then another plane 920 seconds later. ADS-B data gives nearly every aircraft's position, speed, and altitude. A paid API exists, but the creator ran a Python scraping package for a few hours to get every flight over the continental US on September 8. The package downloads whole flight paths, so tracks reach Hawaii and other countries. Played with boosted frequencies, the louder curve sounds like a propeller plane. The ADS-B type code does not say propeller or jet, so he used a lookup table that does. The table has gaps, so he removed known jet types rather than keeping known propeller types.",
+      "systems": [
+        "S1"
+      ],
+      "parts_tools_software": [
+        "ADS-B data with position, speed, altitude, timestamp, and type code",
+        "Paid ADS-B API, mentioned and not used",
+        "Python package that scrapes ADS-B data, not named",
+        "ICAO type-code lookup table marking propeller or jet",
+        "Audio frequency boost to make the propeller sound audible",
+        "Map view of flight tracks, tool not named"
+      ],
+      "visual_moments": [
+        {
+          "t": "00:02:42",
+          "reason": "ADS-B introduced, likely with a flight-tracking visual."
+        },
+        {
+          "t": "00:02:47",
+          "reason": "ADS-B fields listed."
+        },
+        {
+          "t": "00:02:56",
+          "reason": "First search idea, a plane heard and another 920 s later."
+        },
+        {
+          "t": "00:03:02",
+          "reason": "ADS-B API and Python scraping package mentioned, likely on screen."
+        },
+        {
+          "t": "00:03:13",
+          "reason": "Map of every flight track on September 8."
+        },
+        {
+          "t": "00:03:19",
+          "reason": "Tracks extending to Hawaii and other countries."
+        },
+        {
+          "t": "00:03:40",
+          "reason": "Louder curve about to play with boosted frequencies."
+        },
+        {
+          "t": "00:03:49",
+          "reason": "Propeller sound playing, likely over its spectrogram."
+        },
+        {
+          "t": "00:03:55",
+          "reason": "ADS-B type code field."
+        },
+        {
+          "t": "00:04:02",
+          "reason": "Type-code lookup table that marks propeller or jet."
+        },
+        {
+          "t": "00:04:12",
+          "reason": "Map after removing known jet types."
+        }
+      ]
+    },
+    {
+      "id": "M3",
+      "title": "Grid candidate points and compute delayed CPA times",
+      "start": "00:04:14",
+      "end": "00:07:04",
+      "summary": "This step is shown on a small test area. Each ADS-B point of a flight has coordinates, altitude, and a timestamp. The creator lays a 200 m grid of observer points within 10 km of the flight path, a conservative limit for hearing a plane. Hearing a plane spans almost two minutes, so the event time is the CPA, which he calls closest point of arrival, when the plane is nearest and loudest. The time that matters is the delayed CPA time, when the CPA sound reaches the observer. The delay uses the 3D slant distance. ADS-B altitude is above sea level, so a DEM gives each grid point's ground elevation. In the worked example the CPA time is 22:46:34 and the delayed CPA time is 22:46:46. Repeating this for every flight gives each grid point a list of flight IDs and delayed CPA times.",
+      "systems": [
+        "S3",
+        "S4"
+      ],
+      "parts_tools_software": [
+        "ADS-B track points with coordinates, altitude, and timestamp",
+        "200 m grid of candidate observer points",
+        "10 km radius around each flight path",
+        "DEM for ground elevation",
+        "Speed of sound for the propagation delay"
+      ],
+      "visual_moments": [
+        {
+          "t": "00:04:21",
+          "reason": "Single flight track in pink on the test area."
+        },
+        {
+          "t": "00:04:25",
+          "reason": "Individual ADS-B points with coordinates, altitude, timestamp."
+        },
+        {
+          "t": "00:04:32",
+          "reason": "200 m grid of candidate points around the flight."
+        },
+        {
+          "t": "00:04:42",
+          "reason": "CPA joke image for a different CPA."
+        },
+        {
+          "t": "00:04:45",
+          "reason": "Observer and its CPA on the flight track."
+        },
+        {
+          "t": "00:05:00",
+          "reason": "Hearing spans many points along the track."
+        },
+        {
+          "t": "00:05:02",
+          "reason": "Full event curve, almost two minutes long."
+        },
+        {
+          "t": "00:05:14",
+          "reason": "10 km radius grid around the flight."
+        },
+        {
+          "t": "00:05:36",
+          "reason": "CPA time read from the closest ADS-B point."
+        },
+        {
+          "t": "00:05:52",
+          "reason": "Sound path from plane to listener."
+        },
+        {
+          "t": "00:06:02",
+          "reason": "Slant distance against horizontal distance."
+        },
+        {
+          "t": "00:06:13",
+          "reason": "Altitude above sea level against height above ground."
+        },
+        {
+          "t": "00:06:20",
+          "reason": "DEM elevation layer."
+        },
+        {
+          "t": "00:06:29",
+          "reason": "Worked example, CPA time 22:46:34."
+        },
+        {
+          "t": "00:06:32",
+          "reason": "Worked example, delayed CPA time 22:46:46."
+        },
+        {
+          "t": "00:06:44",
+          "reason": "Grid after processing all flights in the area."
+        },
+        {
+          "t": "00:06:51",
+          "reason": "One grid point with its flight IDs and delayed CPA times."
+        }
+      ]
+    },
+    {
+      "id": "M4",
+      "title": "Filter grid points by the 920-second offset",
+      "start": "00:07:04",
+      "end": "00:08:21",
+      "summary": "For each grid point the creator checks whether any two delayed CPA times sit 920 seconds apart. The window allows about 5 seconds either way, because where the centre of a curve is measured varies. About 35,000 points pass in the test area, which is under 0.05% of the continental US land area. A football-field comparison makes the point that this filter alone cannot search the whole country.",
+      "systems": [
+        "S4"
+      ],
+      "parts_tools_software": [
+        "Per-point list of flight IDs and delayed CPA times",
+        "920 s offset window with about 5 s tolerance either way",
+        "Test area under 0.05% of continental US land area"
+      ],
+      "visual_moments": [
+        {
+          "t": "00:07:13",
+          "reason": "Offset check for an example point."
+        },
+        {
+          "t": "00:07:19",
+          "reason": "Timeline of delayed CPA times with the 920 s window."
+        },
+        {
+          "t": "00:07:23",
+          "reason": "Window sliding across CPA times with no match."
+        },
+        {
+          "t": "00:07:30",
+          "reason": "Matching pair found."
+        },
+        {
+          "t": "00:07:36",
+          "reason": "Choices for where the centre of a curve is measured."
+        },
+        {
+          "t": "00:07:43",
+          "reason": "Tolerance on the 920 s window."
+        },
+        {
+          "t": "00:07:52",
+          "reason": "About 35,000 points pass in the test area."
+        },
+        {
+          "t": "00:07:56",
+          "reason": "Test area against continental US land area."
+        },
+        {
+          "t": "00:08:09",
+          "reason": "Football-field land-area comparison graphic."
+        }
+      ]
+    },
+    {
+      "id": "M5",
+      "title": "Measure speed, slant distance, and CPA time from each Doppler curve",
+      "start": "00:08:21",
+      "end": "00:10:38",
+      "summary": "Two comparison clips show that a larger frequency drop means a faster object. With constant linear velocity, velocity sets the size of the drop and CPA slant distance sets how quickly it happens. The creator fits an ideal Doppler curve over each event on the spectrogram. Event 1 fits on the right side but not the left, which matters later. He records generous ranges instead of single values. The right side fits at about 100 m/s, and 70 m/s clearly does not. CPA time keeps a few seconds of error, with a best match at 151.15 nudged to 151.13 after sliding the fundamental frequency up. The output is a measurement range for each event.",
+      "systems": [
+        "S2"
+      ],
+      "parts_tools_software": [
+        "Spectrogram with an adjustable ideal Doppler curve overlay for velocity, slant distance, CPA time, and fundamental frequency",
+        "Two comparison audio clips at different speeds"
+      ],
+      "visual_moments": [
+        {
+          "t": "00:08:38",
+          "reason": "Two comparison clips introduced."
+        },
+        {
+          "t": "00:08:43",
+          "reason": "Comparison clips playing, likely as spectrograms."
+        },
+        {
+          "t": "00:08:48",
+          "reason": "Clip 2 has the larger frequency drop."
+        },
+        {
+          "t": "00:09:03",
+          "reason": "Velocity sets the drop size, distance sets its speed."
+        },
+        {
+          "t": "00:09:14",
+          "reason": "Curve fit over the recording's Doppler curve."
+        },
+        {
+          "t": "00:09:39",
+          "reason": "Measurement overlay on event 1."
+        },
+        {
+          "t": "00:09:41",
+          "reason": "Velocity control changing the drop."
+        },
+        {
+          "t": "00:09:46",
+          "reason": "Slant distance control changing the slope."
+        },
+        {
+          "t": "00:09:53",
+          "reason": "Fit matches the right side but not the left."
+        },
+        {
+          "t": "00:10:06",
+          "reason": "Fit at 100 m/s."
+        },
+        {
+          "t": "00:10:13",
+          "reason": "Fit at 70 m/s, clearly wrong."
+        },
+        {
+          "t": "00:10:20",
+          "reason": "CPA time best match 151.15, nudged to 151.13."
+        },
+        {
+          "t": "00:10:24",
+          "reason": "Fundamental frequency adjusted."
+        },
+        {
+          "t": "00:10:35",
+          "reason": "Measurement ranges for event 1 and event 2."
+        }
+      ]
+    },
+    {
+      "id": "M6",
+      "title": "Apply speed, slant-distance, and silence filters",
+      "start": "00:10:38",
+      "end": "00:13:35",
+      "summary": "Flight segments are cut to the event 1 velocity range, drawn green, and the event 2 range, drawn pink. Candidate points now sit only at the measured slant distance from each segment, not across the full 10 km grid. A point passes if it hears a green segment and then a pink segment 920 seconds later at the right distances. About 73,000 points pass, mostly in clusters at airports where traffic is dense. The recording has no other aircraft for almost 15 minutes between the events, so a silence filter removes any point that would have heard a flight in between. The thresholds are shown on screen and are conservative. About 70,000 points drop to 15,000. The creator notes that this uses up everything the simple spectrogram measurements can give.",
+      "systems": [
+        "S1",
+        "S3",
+        "S4"
+      ],
+      "parts_tools_software": [
+        "Flight segments filtered by event 1 and event 2 velocity ranges",
+        "Candidate points placed at the measured slant distance",
+        "Silence filter with thresholds shown on screen"
+      ],
+      "visual_moments": [
+        {
+          "t": "00:10:40",
+          "reason": "All propeller flights on the map."
+        },
+        {
+          "t": "00:10:43",
+          "reason": "Event 1 velocity-filtered segments in green."
+        },
+        {
+          "t": "00:10:45",
+          "reason": "Event 2 velocity-filtered segments in pink."
+        },
+        {
+          "t": "00:10:52",
+          "reason": "Green-then-pink criterion."
+        },
+        {
+          "t": "00:11:11",
+          "reason": "Candidate points at the measured slant distance, about 73,000."
+        },
+        {
+          "t": "00:11:20",
+          "reason": "Point clusters sit on airports."
+        },
+        {
+          "t": "00:11:41",
+          "reason": "Spectrogram gap of almost 15 minutes between the events."
+        },
+        {
+          "t": "00:12:07",
+          "reason": "Silence filter introduced."
+        },
+        {
+          "t": "00:12:11",
+          "reason": "Silence filter thresholds and logic on screen, a pause point."
+        },
+        {
+          "t": "00:12:19",
+          "reason": "Recap of the filter chain."
+        },
+        {
+          "t": "00:12:52",
+          "reason": "Points after the silence filter, about 15,000."
+        },
+        {
+          "t": "00:13:03",
+          "reason": "Map of the remaining 15,000 points."
+        },
+        {
+          "t": "00:13:16",
+          "reason": "Static source frame with nothing more to extract."
+        },
+        {
+          "t": "00:13:23",
+          "reason": "Summary of spectrogram-derived constraints."
+        }
+      ]
+    },
+    {
+      "id": "M7",
+      "title": "Forward-model the Doppler curve from real flight geometry",
+      "start": "00:13:35",
+      "end": "00:16:45",
+      "summary": "The measured curves are not ideal because planes change heading, speed, and altitude. Several geometries can produce the same variation, so the spectrogram cannot be inverted. Instead the creator models the exact curve each candidate point would hear from each flight's real ADS-B track and looks for the match. The heard frequency depends on radial velocity, the part of the plane's velocity toward or away from the observer. Head-on it equals the plane's speed, side-on it is zero and there is no shift. The Doppler equation takes the speed of sound c, the radial velocity v_r, and the measured fundamental frequency f0. In the worked example v_r is 0 at CPA, 7:12:30, giving 130 Hz, and 62.7 at 7:12:35, giving 109.9 Hz. These numbers fit f = f0 * c / (c + v_r) with c = 343 m/s for a receding source, which is inferred and not stated. Repeating this per time step gives a curve.",
+      "systems": [
+        "S5"
+      ],
+      "parts_tools_software": [
+        "Interpolated ADS-B flight track",
+        "Doppler equation with speed of sound c, radial velocity v_r, and fundamental frequency f0",
+        "Radial velocity diagram"
+      ],
+      "visual_moments": [
+        {
+          "t": "00:13:36",
+          "reason": "Replay of the earlier constant-velocity explanation."
+        },
+        {
+          "t": "00:13:46",
+          "reason": "Replay of the imperfect event 1 fit."
+        },
+        {
+          "t": "00:13:56",
+          "reason": "Non-linear flight with heading and speed changes."
+        },
+        {
+          "t": "00:14:09",
+          "reason": "Progression of constraint layers."
+        },
+        {
+          "t": "00:14:29",
+          "reason": "Several geometries can cause the same variation."
+        },
+        {
+          "t": "00:14:40",
+          "reason": "Forward modelling from real flight geometry."
+        },
+        {
+          "t": "00:14:47",
+          "reason": "Candidate points along each flight path."
+        },
+        {
+          "t": "00:15:09",
+          "reason": "Radial velocity diagram with the observer ahead of the plane."
+        },
+        {
+          "t": "00:15:15",
+          "reason": "Observer to the side, radial velocity near zero."
+        },
+        {
+          "t": "00:15:26",
+          "reason": "Red line for the radial component."
+        },
+        {
+          "t": "00:15:30",
+          "reason": "Curve shape changing with flight geometry."
+        },
+        {
+          "t": "00:15:47",
+          "reason": "Worked example at CPA, 7:12:30."
+        },
+        {
+          "t": "00:16:07",
+          "reason": "Doppler equation on screen."
+        },
+        {
+          "t": "00:16:09",
+          "reason": "Equation terms c, v_r, and f0."
+        },
+        {
+          "t": "00:16:19",
+          "reason": "f0 taken from the measured curve."
+        },
+        {
+          "t": "00:16:25",
+          "reason": "First modelled point at 130 Hz."
+        },
+        {
+          "t": "00:16:34",
+          "reason": "Second point, 62.7 radial velocity gives 109.9 Hz."
+        },
+        {
+          "t": "00:16:42",
+          "reason": "Modelled curve built from the hearing-time velocity."
+        }
+      ]
+    },
+    {
+      "id": "M8",
+      "title": "Correct the model for sound travel time",
+      "start": "00:16:45",
+      "end": "00:18:10",
+      "summary": "Using the radial velocity at the hearing time is wrong and would make the search fail. The frequency heard at time t comes from the plane's velocity when it emitted the sound heard at t. So for each time step the model finds where the plane was when it emitted that sound, takes the radial velocity there, and applies the Doppler equation. The result is a different curve shape, not the naive curve shifted later. On the real spectrogram the emission-time curve matches and the naive curve does not. The model runs for every candidate point and every flight.",
+      "systems": [
+        "S3",
+        "S5"
+      ],
+      "parts_tools_software": [
+        "Emission-time solve for each time step",
+        "Spectrogram overlay comparing the naive and emission-time curves"
+      ],
+      "visual_moments": [
+        {
+          "t": "00:16:45",
+          "reason": "Naive curve flagged as wrong."
+        },
+        {
+          "t": "00:17:14",
+          "reason": "Emission position for time t."
+        },
+        {
+          "t": "00:17:21",
+          "reason": "Emission-time construction."
+        },
+        {
+          "t": "00:17:25",
+          "reason": "Naive and emission-time curves together."
+        },
+        {
+          "t": "00:17:36",
+          "reason": "Curves aligned at one point with different shapes."
+        },
+        {
+          "t": "00:17:39",
+          "reason": "Curves aligned at another point."
+        },
+        {
+          "t": "00:17:48",
+          "reason": "Real spectrogram with both models."
+        },
+        {
+          "t": "00:17:50",
+          "reason": "Naive curve over the spectrogram."
+        },
+        {
+          "t": "00:17:53",
+          "reason": "Emission-time curve over the spectrogram."
+        }
+      ]
+    },
+    {
+      "id": "M9",
+      "title": "Score modelled curves with locked two-event scoring",
+      "start": "00:18:10",
+      "end": "00:20:59",
+      "summary": "Each modelled curve is drawn on the spectrogram and scored by summing the brightness values it covers. Fundamental frequency and CPA time both come from measurements, so both carry error. Event 1 is placed by putting its modelled delayed CPA at the measured CPA timestamp in the audio. The scorer then sweeps a few seconds of time offset and a range of fundamental frequency and keeps the best combination. Event 2 gets its own fundamental-frequency sweep, but its time offset from event 1 is locked to what the flight geometry predicts, so a bad event 2 placement counts against the candidate. The scoring is sharp enough that on the 200 m grid the true point could sit up to 141 m away and score badly. So the survivors are resampled to 100 m, about 30,000 to 40,000 points. This is expensive, which is why the earlier filters matter.",
+      "systems": [
+        "S6"
+      ],
+      "parts_tools_software": [
+        "Spectrogram brightness sum along each modelled curve",
+        "Sweep over CPA time offset and fundamental frequency",
+        "Locked two-event scoring",
+        "100 m resampling of surviving candidates"
+      ],
+      "visual_moments": [
+        {
+          "t": "00:18:16",
+          "reason": "Modelled curve over the spectrogram."
+        },
+        {
+          "t": "00:18:20",
+          "reason": "Gymnastics scorecard joke."
+        },
+        {
+          "t": "00:18:25",
+          "reason": "Brightness summed along the curve."
+        },
+        {
+          "t": "00:18:33",
+          "reason": "Where the f0 measurement comes from."
+        },
+        {
+          "t": "00:18:43",
+          "reason": "Placing the curve in time."
+        },
+        {
+          "t": "00:19:05",
+          "reason": "Delayed CPA aligned to the audio timestamp."
+        },
+        {
+          "t": "00:19:15",
+          "reason": "Sweep over time offset and f0."
+        },
+        {
+          "t": "00:19:25",
+          "reason": "Best combination kept."
+        },
+        {
+          "t": "00:19:28",
+          "reason": "Event 2 placement."
+        },
+        {
+          "t": "00:19:45",
+          "reason": "Event 2 at a wrong offset."
+        },
+        {
+          "t": "00:19:54",
+          "reason": "Locked two-event scoring diagram."
+        },
+        {
+          "t": "00:20:22",
+          "reason": "Grid coarseness, true point up to 141 m away."
+        },
+        {
+          "t": "00:20:32",
+          "reason": "100 m resampling."
+        },
+        {
+          "t": "00:20:44",
+          "reason": "Candidate count after resampling."
+        }
+      ]
+    },
+    {
+      "id": "M10",
+      "title": "Rank candidates by flight pair and inspect the top hits",
+      "start": "00:20:59",
+      "end": "00:22:41",
+      "summary": "Each candidate has an event 1 score and an event 2 score, shown as a scatter plot where the top right is best. No single point stands out at first. Grouping by flight pair and keeping the best point per pair leaves one clear leader at 20.48, whose modelled curves cover both observed curves. The second best, about 15, is close on event 1 but badly off on event 2, and the third is worse. In QGIS the creator views the scored points, then reruns at finer resolution for only the winning flights and shows heat maps for event 1, event 2, and both combined.",
+      "systems": [
+        "S6",
+        "S7"
+      ],
+      "parts_tools_software": [
+        "Scatter plot of event 1 against event 2 scores",
+        "Grouping by flight pair",
+        "Spectrogram overlays of modelled curves",
+        "QGIS",
+        "Fine-resolution heat maps per flight"
+      ],
+      "visual_moments": [
+        {
+          "t": "00:21:01",
+          "reason": "Results introduced."
+        },
+        {
+          "t": "00:21:07",
+          "reason": "Scatter plot of event 1 against event 2 scores."
+        },
+        {
+          "t": "00:21:11",
+          "reason": "Top-right quadrant."
+        },
+        {
+          "t": "00:21:19",
+          "reason": "Clusters per flight pair."
+        },
+        {
+          "t": "00:21:26",
+          "reason": "Best point per flight pair."
+        },
+        {
+          "t": "00:21:32",
+          "reason": "One clear leader."
+        },
+        {
+          "t": "00:21:39",
+          "reason": "Top point, score 20.48."
+        },
+        {
+          "t": "00:21:47",
+          "reason": "Event 1 curve fully covered by the model."
+        },
+        {
+          "t": "00:21:48",
+          "reason": "Event 2 overlay for the top point."
+        },
+        {
+          "t": "00:21:59",
+          "reason": "Second-best event 1 overlay."
+        },
+        {
+          "t": "00:22:04",
+          "reason": "Second-best and best event 1 scores compared."
+        },
+        {
+          "t": "00:22:11",
+          "reason": "Second-best event 2 overlay."
+        },
+        {
+          "t": "00:22:15",
+          "reason": "Third-best overlays."
+        },
+        {
+          "t": "00:22:22",
+          "reason": "Scored points in QGIS."
+        },
+        {
+          "t": "00:22:32",
+          "reason": "Event 1 heat map."
+        },
+        {
+          "t": "00:22:36",
+          "reason": "Event 2 flight path and heat map."
+        },
+        {
+          "t": "00:22:40",
+          "reason": "Combined heat map."
+        }
+      ]
+    },
+    {
+      "id": "M11",
+      "title": "Confirm with a one-minute known-time clip and Street View",
+      "start": "00:22:41",
+      "end": "00:26:08",
+      "summary": "A second test uses only the first, inaudible curve, one minute of audio, with a known time of 8:37 PM UTC and the whole continental US as the search area. The same spectrogram measurement gives velocity bounds, and only flight segments at that time are kept. With one event the scores form a histogram, not a scatter plot. The curve is too faint for brightness scoring, so the creator traces it with a line and scores each modelled curve by its distance to that line. The top point matches, at the same coordinates the two-event search found, 40.87, -73.5. He generalises that a search needs either several events or a tight time, and that a city-sized area, about 0.01% of US land, allows much looser time bounds. He then zooms to the heat-map centre in QGIS, which sits at the edge of water, opens the coordinate in Google Maps, and matches a V-shaped tree line in Street View. Zooming out shows the security camera on a pole.",
+      "systems": [
+        "S1",
+        "S2",
+        "S5",
+        "S6",
+        "S7"
+      ],
+      "parts_tools_software": [
+        "One-minute clip with a known time, 8:37 PM UTC",
+        "Flight segments filtered to that time",
+        "Score histogram",
+        "Traced line over the faint curve, used for distance scoring",
+        "QGIS",
+        "Google Maps and Street View"
+      ],
+      "visual_moments": [
+        {
+          "t": "00:22:53",
+          "reason": "Faint event 1 curve again."
+        },
+        {
+          "t": "00:23:06",
+          "reason": "Known recording time given."
+        },
+        {
+          "t": "00:23:16",
+          "reason": "Flight segments at that time."
+        },
+        {
+          "t": "00:23:22",
+          "reason": "Score histogram."
+        },
+        {
+          "t": "00:23:26",
+          "reason": "Best point per flight."
+        },
+        {
+          "t": "00:23:31",
+          "reason": "Spectrogram overlays for the top points."
+        },
+        {
+          "t": "00:23:38",
+          "reason": "Traced line over the faint curve."
+        },
+        {
+          "t": "00:23:45",
+          "reason": "Top point overlay."
+        },
+        {
+          "t": "00:23:47",
+          "reason": "Second-place overlay."
+        },
+        {
+          "t": "00:23:58",
+          "reason": "Same coordinates from both methods."
+        },
+        {
+          "t": "00:24:14",
+          "reason": "Tradeoff between number of events and time constraint."
+        },
+        {
+          "t": "00:24:48",
+          "reason": "City-sized area against US land area."
+        },
+        {
+          "t": "00:25:04",
+          "reason": "Accuracy claim for one minute of audio."
+        },
+        {
+          "t": "00:25:20",
+          "reason": "Heat-map centre in QGIS."
+        },
+        {
+          "t": "00:25:24",
+          "reason": "Centre at the edge of water."
+        },
+        {
+          "t": "00:25:27",
+          "reason": "Coordinate opened in Google Maps."
+        },
+        {
+          "t": "00:25:35",
+          "reason": "Tree line in the source footage."
+        },
+        {
+          "t": "00:25:38",
+          "reason": "Target features, a V-shaped tree, a point, and a rounded part."
+        },
+        {
+          "t": "00:25:49",
+          "reason": "Street View candidate view."
+        },
+        {
+          "t": "00:25:54",
+          "reason": "Matching V-shape in Street View."
+        },
+        {
+          "t": "00:25:59",
+          "reason": "Source footage and Street View side by side."
+        },
+        {
+          "t": "00:26:05",
+          "reason": "Security camera on the pole."
+        }
+      ]
+    },
+    {
+      "id": "M12",
+      "title": "Test countermeasures",
+      "start": "00:26:08",
+      "end": "00:28:09",
+      "summary": "A high-pass filter fails for two reasons. The Doppler curves sit in the same band as the human voice, and after high-passing, exporting to MP3, and boosting all frequencies, the curve comes back. Masking fails too, because a JBL speaker across the room had been playing a Doppler curve under the last 15 seconds of speech. Cutting the audio removes the offset between events, but one minute with a known time can still work, and phone calls give known times. In a phone-call test the JBL speaker plays a Doppler curve in another room, and the receiving phone sits under Squishmallows to block leakage. The curve survives the call's compression and noise reduction. He points out a gap in the curve around when he starts talking again, and the transcript does not make the cause clear. His suggested measures are cuts and extra noise cancellation.",
+      "systems": [
+        "S8",
+        "S2"
+      ],
+      "parts_tools_software": [
+        "High-pass filter in an audio editor, not named",
+        "MP3 export",
+        "Gain boost across all frequencies",
+        "JBL speaker playing a Doppler curve",
+        "Two phones on a call",
+        "Squishmallows covering the receiving phone"
+      ],
+      "visual_moments": [
+        {
+          "t": "00:26:13",
+          "reason": "High-pass filter introduced."
+        },
+        {
+          "t": "00:26:19",
+          "reason": "Voice band overlaps the Doppler band."
+        },
+        {
+          "t": "00:26:28",
+          "reason": "Recording with the Doppler curve in the editor."
+        },
+        {
+          "t": "00:26:31",
+          "reason": "High-pass applied."
+        },
+        {
+          "t": "00:26:37",
+          "reason": "MP3 export spectrogram with the curve gone."
+        },
+        {
+          "t": "00:26:41",
+          "reason": "Gain boost brings the curve back."
+        },
+        {
+          "t": "00:26:58",
+          "reason": "Hidden Doppler curve under this video's own speech."
+        },
+        {
+          "t": "00:27:01",
+          "reason": "Spectrogram reveal of the masked curve."
+        },
+        {
+          "t": "00:27:06",
+          "reason": "Cuts as a working measure."
+        },
+        {
+          "t": "00:27:22",
+          "reason": "Phone calls give known times."
+        },
+        {
+          "t": "00:27:33",
+          "reason": "Receiving phone under Squishmallows."
+        },
+        {
+          "t": "00:27:38",
+          "reason": "JBL speaker in another room."
+        },
+        {
+          "t": "00:27:46",
+          "reason": "Curve passing through the phone call."
+        },
+        {
+          "t": "00:27:53",
+          "reason": "Gap in the curve on the spectrogram."
+        }
+      ]
+    }
+  ]
+}
