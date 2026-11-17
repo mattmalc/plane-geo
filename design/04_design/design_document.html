@@ -1,0 +1,2810 @@
+<!doctype html><html><head><meta charset='utf-8'><title>Design document</title><style>
+body{background:#fff;color:#111;font-family:Arial,Helvetica,sans-serif;font-size:10pt;line-height:1.35;
+max-width:1000px;margin:24px auto;padding:0 24px}
+h1,h2,h3,h4{color:#333;font-family:Arial,Helvetica,sans-serif;margin:1.1em 0 .4em}
+h1{font-size:18pt;border-bottom:2px solid #555;padding-bottom:4px}
+h2{font-size:14pt;border-bottom:1px solid #999;padding-bottom:3px}
+h3{font-size:11.5pt}h4{font-size:10.5pt;color:#555}
+p,ul,ol,table,pre{margin:.35em 0}li{margin:.1em 0}
+hr{border:0;border-top:1px solid #aaa;margin:1em 0}
+table{border-collapse:collapse;font-size:9pt}th,td{border:1px solid #bbb;padding:2px 6px;vertical-align:top}
+th{background:#eee;color:#222}
+code,pre{font-family:Consolas,Menlo,monospace;font-size:8.5pt;background:#f4f4f4}
+pre{padding:6px;overflow-x:auto}
+img{max-width:100%;border:1px solid #ccc}a{color:#333}
+blockquote{border-left:3px solid #aaa;margin:.4em 0;padding-left:8px;color:#444}
+</style></head><body><h1 id="design-document-for-geolocating-a-recording-from-aircraft-doppler-curves">Design document for geolocating a recording from aircraft Doppler curves</h1>
+<p>Source video: "I discovered a sound that leaks your exact location (and it's everywhere)", channel colsto, uploaded 2026-11-02, 29:12, https://www.youtube.com/watch?v=UytYrhYLOKI. Inputs: <code>design/00_source/source.json</code>, <code>design/02_milestones/milestones.json</code>, and the breakdowns in <code>design/03_breakdowns/M1</code> to <code>M12</code>.</p>
+<p>Each fact carries the tag of its source. [shown] means visible on screen. [stated] means spoken, or written in the video description. [inferred M#-I##] is an inference made in a breakdown. [inferred D-##] is an inference this document adds. Section 8 lists every inferred item with its best guess and confidence. A time such as [00:12:11] is a video timestamp. The description says no code or tools are released [stated], so section 6 reconstructs every algorithm from the screen and the narration.</p>
+<h2 id="1-overview">1. Overview</h2>
+<p><strong>What it is.</strong> A geolocation investigation of a security-camera video. The picture never changes and shows only sky and trees [stated 00:00:17]. The only given facts are "In continental US" and "Filmed 9/8/26" [shown 00:00:27]. The creator's earlier thunder-based method reached about 5 km [stated 00:00:43]. This method uses aircraft Doppler curves in the audio. They are inaudible and appear only in a zoomed, high-resolution spectrogram [stated 00:01:14] [shown 00:01:45].</p>
+<p><strong>What it does.</strong> Two propeller-aircraft curves sit 920 s apart, and no aircraft is heard between them [shown 00:02:56] [stated 00:11:41]. The pipeline runs in six steps:</p>
+<ol>
+<li>Download ADS-B tracks for every flight over the continental US on September 8 and drop known jet types [stated 00:03:04] [stated 00:04:05].</li>
+<li>Fit an ideal Doppler curve to each event and record ranges for speed, CPA slant distance, CPA time, and fundamental frequency f0 [stated 00:09:12]. CPA is the closest point of approach.</li>
+<li>Keep ground points that hear a flight at the event 1 speed and distance, then another at the event 2 speed and distance 920 ± 5 s later, and no flight between them. About 15,000 points remain across the US [stated 00:12:49].</li>
+<li>For each surviving point and flight, model the exact curve the point would hear, from the aircraft velocity at the moment each sound left it [stated 00:17:01].</li>
+<li>Score each model against the spectrogram. Event 1 gets a sweep of time offset and f0. Event 2 gets an f0 sweep only and keeps the time offset the flight geometry predicts [stated 00:19:28]. Survivors are rescored on a 100 m grid [stated 00:20:27].</li>
+<li>Keep the best point per flight pair and rank the pairs [shown 00:21:29].</li>
+</ol>
+<p><strong>Final result.</strong> Flights 1100069709 and 1100048665 lead with a combined score of 20.48 at 40.876466, -73.524951. The next pair scores 15.25 [shown 00:21:39] [shown 00:21:54]. A separate search on one minute of audio with a known time of 8:37 PM UTC ranks a point 610 m away first, from a different flight [shown 00:23:31] [stated 00:24:01] [inferred M11-I02]. From a finer heat map the creator takes 40.8767282, -73.5264340 [shown 00:25:27]. Google Maps places it in Oyster Bay, New York [shown 00:25:30]. Street View at 19 Bayview Ave shows the tree line from the footage and the camera on a utility pole [shown 00:26:05]. He claims a result "within a couple hundred feet" from one minute of inaudible audio [stated 00:25:01]. The work took months and over 5,000 lines of code, with 50 GB Parquet files and countrywide DEMs [stated 00:02:00].</p>
+<p>The video ends with countermeasure tests. A high-pass filter, louder masking sound, and phone-call processing all leave the curve visible. The suggested defences are cuts that break the offset between events, and extra noise cancellation [stated 00:27:06] [stated 00:28:04].</p>
+<h3 id="event-names-used-in-this-document">Event names used in this document</h3>
+<p>The breakdowns label the curves differently. This document uses the labels that the creator's scoring tools print.</p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Tool label</th>
+<th>Elapsed recording time</th>
+<th>Time in the 60:00 file</th>
+<th>Curve</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>E0</td>
+<td>"Single-Event (1:21:16)" [shown 00:23:31], QGIS layer <code>1:21:20_candidat...</code> [shown 00:02:09]</td>
+<td>4876 s</td>
+<td>about 1258 to 1295 s [shown 00:01:52]</td>
+<td>faint, about 510 to 310 Hz [shown 00:23:31]</td>
+<td>one-minute known-time search, M11</td>
+</tr>
+<tr>
+<td>E1</td>
+<td>"event1 (1:35:52)" [shown 00:19:27]</td>
+<td>5752 s</td>
+<td>about 2090 to 2180 s [shown 00:02:31]</td>
+<td>louder, with harmonics, about 180 to 82 Hz, f0 about 112.5 Hz [shown 00:17:53] [shown 00:19:27]</td>
+<td>two-event search, flight 1100069709</td>
+</tr>
+<tr>
+<td>E2</td>
+<td>"event2 (1:51:13)" [shown 00:19:27]</td>
+<td>6673 s</td>
+<td>about 3035 to 3117 s [shown 00:02:34]</td>
+<td>about 178 to 100 Hz, f0 about 130 to 133.5 Hz [shown 00:10:30] [shown 00:18:33]</td>
+<td>two-event search, flight 1100048665</td>
+</tr>
+</tbody>
+</table>
+<p>The 60:00 file is named <code>oyster bay_20260913T191804Z_60to120min</code> [shown 00:03:55]. Elapsed time minus 3600 s gives the file time of all three curves. The same offset puts E1 and E2 under the two planes of the 920 s diagram [shown 00:10:35] [inferred D-01]. Under this reading, the M1 breakdown's "event 1" is E0, its "event 2" is E1, and its "possible third curve" is E2. The narration agrees. After the louder curve and "one more here", the creator says "these two are what we'll be using" [stated 00:02:31]. The Doppler Curve Fit window 01:50:30 to 01:52:15, which M5 and M7 call event 1, contains the E2 label, so that demo is on E2 [inferred M5-I11]. Section 8 lists each conflict with both values and their sources.</p>
+<h2 id="2-system-architecture">2. System architecture</h2>
+<p>The project has eight systems. S1 to S6 form a filter-then-score pipeline. S7 is map review and ground truth. S8 is a separate set of audio experiments. The responsibilities below summarise the breakdowns. Section 6 tags each detail.</p>
+<pre class="mermaid">flowchart LR
+  REC[(&quot;Recording&lt;br/&gt;60:00 file, 2 ch&quot;)]:::data
+  FR24[(&quot;Flightradar24&lt;br/&gt;via pyfr24&quot;)]:::data
+  ICAO[(&quot;ICAO DOC 8643&lt;br/&gt;type table&quot;)]:::data
+  DEM[(&quot;dem_mosaic_1km&quot;)]:::data
+  WX[(&quot;Wind observations&quot;)]:::data
+  S1[&quot;S1 ADS-B ingest&lt;br/&gt;and aircraft filtering&quot;]:::sys
+  S2[&quot;S2 Spectrogram&lt;br/&gt;measurement&quot;]:::sys
+  S3[&quot;S3 Acoustic geometry&lt;br/&gt;and propagation&quot;]:::sys
+  S4[&quot;S4 Candidate grid&lt;br/&gt;and constraint filters&quot;]:::sys
+  S5[&quot;S5 Doppler curve&lt;br/&gt;forward model&quot;]:::sys
+  S6[&quot;S6 Spectrogram scoring&lt;br/&gt;and ranking&quot;]:::sys
+  S7[&quot;S7 Map review and&lt;br/&gt;ground truth&quot;]:::review
+  S8[&quot;S8 Countermeasure&lt;br/&gt;tests&quot;]:::review
+  FR24 --&gt; S1
+  ICAO --&gt; S1
+  REC --&gt; S2
+  REC --&gt; S8
+  DEM --&gt; S3
+  WX --&gt; S5
+  S2 -- &quot;speed ranges, known time&quot; --&gt; S1
+  S1 -- &quot;track_1sec, velocity segments&quot; --&gt; S3
+  S1 -- &quot;track_1sec arrays&quot; --&gt; S5
+  S2 -- &quot;event measurements&quot; --&gt; S4
+  S3 -- &quot;CPA hits per grid point&quot; --&gt; S4
+  S4 -- &quot;candidates (point, flight1, flight2)&quot; --&gt; S5
+  S3 -- &quot;emission-time solve&quot; --&gt; S5
+  S5 -- &quot;Doppler factor curves&quot; --&gt; S6
+  S2 -- &quot;spectrogram, traced line&quot; --&gt; S6
+  S6 -- &quot;scored points, ranked pairs&quot; --&gt; S7
+  S6 -- &quot;winning flights for fine rerun&quot; --&gt; S5
+  classDef data fill:#e3eefc,stroke:#3b6ea8,color:#10243e
+  classDef sys fill:#fff1d6,stroke:#b07a12,color:#3a2700
+  classDef review fill:#e4f4e4,stroke:#3c8a3c,color:#123312
+</pre>
+<h3 id="responsibilities">Responsibilities</h3>
+<table>
+<thead>
+<tr>
+<th>Id</th>
+<th>System</th>
+<th>Responsibilities</th>
+<th>Milestones</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>S1</td>
+<td>ADS-B ingest and aircraft filtering</td>
+<td>Download every flight over the continental US for the day, with whole trails. Drop known jets by ICAO Engine Type. Resample tracks to 1 s. Cut tracks into velocity segments per event, and to a time window when the recording time is known.</td>
+<td>M2, M6, M11</td>
+</tr>
+<tr>
+<td>S2</td>
+<td>Spectrogram measurement</td>
+<td>Find curves with a narrow band and a long FFT window. Fit an ideal constant-velocity curve per event and record ranges for speed, CPA slant distance, CPA time, and f0. Trace a very faint curve as a line.</td>
+<td>M1, M5, M11, M12</td>
+</tr>
+<tr>
+<td>S3</td>
+<td>Acoustic geometry and propagation</td>
+<td>Compute the CPA, the 3D slant distance from ADS-B altitude and DEM ground elevation, the delayed CPA time, and the emission time for any reception time.</td>
+<td>M3, M6, M8</td>
+</tr>
+<tr>
+<td>S4</td>
+<td>Candidate grid and constraint filters</td>
+<td>Lay a 200 m grid, first within 10 km of each track, later only in each event's slant-distance band. Apply the 920 ± 5 s offset, speed, distance, and silence filters.</td>
+<td>M3, M4, M6</td>
+</tr>
+<tr>
+<td>S5</td>
+<td>Doppler curve forward model</td>
+<td>For each candidate point and flight, compute the heard frequency over time from the radial velocity at emission time.</td>
+<td>M7, M8</td>
+</tr>
+<tr>
+<td>S6</td>
+<td>Spectrogram scoring and ranking</td>
+<td>Score curves by spectrogram brightness or by distance to a traced line. Run the locked two-event sweep. Densify survivors to 100 m. Rank the best point per flight pair.</td>
+<td>M9, M10, M11</td>
+</tr>
+<tr>
+<td>S7</td>
+<td>Map review and ground truth</td>
+<td>Show layers and heat maps in QGIS. Copy the coordinate into Google Maps and match the tree line in Street View.</td>
+<td>M10, M11</td>
+</tr>
+<tr>
+<td>S8</td>
+<td>Countermeasure tests</td>
+<td>Apply high-pass filtering, masking, and phone-call processing to audio with a known curve, then look for the curve.</td>
+<td>M12</td>
+</tr>
+</tbody>
+</table>
+<h3 id="interfaces">Interfaces</h3>
+<table>
+<thead>
+<tr>
+<th>From</th>
+<th>To</th>
+<th>Artifact</th>
+<th>Format</th>
+<th>Fields</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>S1</td>
+<td>S1</td>
+<td><code>flight_ids_airborne</code></td>
+<td>CSV [shown 00:03:11]</td>
+<td><code>flightid</code>, <code>registration</code>, <code>typecode</code>, <code>callsign</code>, <code>first_seen_utc</code>, <code>last_seen_utc</code>, <code>max_alt</code>, <code>sample_lat</code>, <code>sample_lon</code> [shown 00:03:56]</td>
+</tr>
+<tr>
+<td>S1</td>
+<td>S1</td>
+<td>tracks</td>
+<td>CSV [shown 00:03:11], later Parquet of about 50 GB [stated 00:02:06] [inferred M2-I11]</td>
+<td><code>flightid</code>, <code>timestamp</code>, <code>latitude</code>, <code>longitude</code>, <code>altitude</code>, <code>ground_speed</code>, <code>track</code>, <code>vertical_speed</code>, <code>source</code> [shown 00:03:13]</td>
+</tr>
+<tr>
+<td>S1</td>
+<td>S3, S4, S5</td>
+<td><code>flight_&lt;id&gt;_track_1sec</code></td>
+<td>point layer [shown 00:04:26]</td>
+<td><code>fid</code>, <code>timestamp</code>, <code>utc_time</code>, <code>lat</code>, <code>lon</code>, <code>alt_ft</code>, <code>gs_kt</code>, <code>vs_fpm</code>, <code>track_deg</code>, <code>valid</code> [shown]</td>
+</tr>
+<tr>
+<td>S1</td>
+<td>S4</td>
+<td>velocity segments, green for E1 and pink for E2</td>
+<td>line layers [shown 00:10:48]</td>
+<td>flight id and time span [inferred M6-I01]</td>
+</tr>
+<tr>
+<td>S2</td>
+<td>S1, S4, S6</td>
+<td>event measurement</td>
+<td>small record</td>
+<td>elapsed CPA time, f0, speed range, CPA distance range, 920 s gap [shown 00:10:35]</td>
+</tr>
+<tr>
+<td>S2</td>
+<td>S6</td>
+<td>spectrogram matrix and traced line <code>LINE_POINTS</code></td>
+<td>dB array, list of (time, frequency) pairs [shown 00:23:31] [inferred M11-I10]</td>
+<td>brightness per time-frequency bin</td>
+</tr>
+<tr>
+<td>S3</td>
+<td>S4</td>
+<td><code>flight_&lt;id&gt;_candidate_gridpoints</code></td>
+<td>point layer [shown 00:04:50]</td>
+<td><code>retarded_cpa_time</code>, <code>cpa_distance_m</code>, <code>ground_elevation_m</code> [shown]</td>
+</tr>
+<tr>
+<td>S4</td>
+<td>S4</td>
+<td><code>gridpoints_heard_multiple</code></td>
+<td>point layer [shown 00:06:58]</td>
+<td><code>fid</code>, <code>n_flights</code>, and comma-separated <code>flight_ids</code> and <code>retarded_cpa_times</code> [shown]</td>
+</tr>
+<tr>
+<td>S4</td>
+<td>S5, S6</td>
+<td>candidates</td>
+<td>point layers <code>post offset pre sil...</code> and <code>post silence + offs...</code> [shown 00:02:09]</td>
+<td>grid point, E1 flight, E2 flight [inferred M4-I03]</td>
+</tr>
+<tr>
+<td>S5</td>
+<td>S6</td>
+<td>model curve</td>
+<td>NumPy arrays [shown 00:02:08]</td>
+<td>Doppler factor per reception frame, indices of frames where the track is valid</td>
+</tr>
+<tr>
+<td>S6</td>
+<td>S7</td>
+<td>scored candidates</td>
+<td>Plotly-style HTML pages [shown 00:21:07] [inferred M10-I08] and QGIS layers under <code>event scores</code> [shown 00:25:24]</td>
+<td><code>flight1</code>, <code>flight2</code>, <code>lat</code>, <code>lon</code>, <code>score_1</code>, <code>score_2</code>, <code>match_score</code> [shown 00:21:39]</td>
+</tr>
+<tr>
+<td>S7</td>
+<td>person</td>
+<td>final coordinate</td>
+<td>EPSG:4326 decimal degrees [shown 00:25:27]</td>
+<td>40.8767282, -73.5264340</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Three clocks.</strong> ADS-B times are UTC epoch seconds [shown 00:04:26]. The fit and scoring tools show elapsed seconds from the start of the full recording [shown 00:17:48]. The spectrogram app shows seconds into the 60:00 file [shown 00:01:52]. Elapsed time equals file time plus 3600 s [inferred D-01]. The two-event search never needs the UTC time of the recording. It anchors each candidate's modelled delayed CPA to the measured audio time of E1 [stated 00:19:04].</p>
+<h2 id="3-bill-of-materials">3. Bill of materials</h2>
+<p>The search needs no hardware beyond a computer. The bill covers data, services, and the countermeasure rig.</p>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Spec</th>
+<th>Quantity</th>
+<th>Source time</th>
+<th>Tag</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Target recording</td>
+<td>Security-camera audio. File <code>oyster bay_20260913T191804Z_60to120min</code>, 60:00.000, channels CH 1 and CH 2, sample rate not shown. The description links the full recording, https://youtu.be/4CxVxuMVkMc.</td>
+<td>1</td>
+<td>00:01:20, 00:03:55</td>
+<td>[shown], link [stated], rate [inferred M1-I05]</td>
+</tr>
+<tr>
+<td>Known facts</td>
+<td>"In continental US", "Filmed 9/8/26"</td>
+<td>2</td>
+<td>00:00:27</td>
+<td>[shown]</td>
+</tr>
+<tr>
+<td>ADS-B flight data</td>
+<td>Flightradar24 trails through <code>pyfr24</code>. Every flight over the continental US on September 8, whole trails. Fields position, altitude, ground speed, track, vertical speed, timestamp, type code.</td>
+<td>one day of all flights, a few hours to download, about 50 GB of Parquet</td>
+<td>00:03:04, 00:03:13, 00:02:06</td>
+<td>[shown], [stated]</td>
+</tr>
+<tr>
+<td>Aircraft type table</td>
+<td>ICAO DOC 8643 Aircraft Type Designators. Columns Manufacturer, Model, Type Designator, Description, Engine Type, Engine Count, WTC. Page shows "Last Updated: 01 October 2026".</td>
+<td>7,261 entries</td>
+<td>00:04:02</td>
+<td>[shown]</td>
+</tr>
+<tr>
+<td>Digital elevation model</td>
+<td>QGIS layer <code>dem_mosaic_1km</code>, single band, continental US. Source dataset not named.</td>
+<td>1 mosaic</td>
+<td>00:06:20</td>
+<td>[shown], 1 km and metres [inferred M3-I04] [inferred M3-I05]</td>
+</tr>
+<tr>
+<td>Wind observations</td>
+<td>Loaded by <code>fetch_or_load_wind_day(date_str)</code>, fields <code>sknt</code>, <code>drct</code>, <code>valid</code></td>
+<td>one day</td>
+<td>00:02:08</td>
+<td>[shown], source [inferred M1-I13]</td>
+</tr>
+<tr>
+<td>Basemaps</td>
+<td>Google satellite, Carto, and Bing layers in QGIS</td>
+<td>3</td>
+<td>00:02:09</td>
+<td>[shown]</td>
+</tr>
+<tr>
+<td>Google Maps and Street View</td>
+<td>Street View imagery Sep 2025 at 19 Bayview Ave, Oyster Bay, New York</td>
+<td>1 location</td>
+<td>00:25:42</td>
+<td>[shown]</td>
+</tr>
+<tr>
+<td>Computer</td>
+<td>Python 3.14 interpreter "Planev2". Hardware not shown.</td>
+<td>1</td>
+<td>00:02:08</td>
+<td>[shown]</td>
+</tr>
+<tr>
+<td>Comparison clips</td>
+<td>Two flyover clips, 0:09.079 and 1:51.061 long</td>
+<td>2</td>
+<td>00:08:39, 00:08:43</td>
+<td>[shown]</td>
+</tr>
+<tr>
+<td>Test audio for the high-pass test</td>
+<td>Track "audio", about 4:50, curves at about 70 to 300 Hz</td>
+<td>1</td>
+<td>00:26:28</td>
+<td>[shown]</td>
+</tr>
+<tr>
+<td>JBL Bluetooth speaker</td>
+<td>Plays a Doppler curve for the masking and phone-call tests</td>
+<td>1</td>
+<td>00:26:54, 00:27:38</td>
+<td>[stated]</td>
+</tr>
+<tr>
+<td>Smartphones</td>
+<td>Two phones on a voice call, iPhone-style call UI with mute</td>
+<td>2</td>
+<td>00:27:33, 00:27:44</td>
+<td>[shown]</td>
+</tr>
+<tr>
+<td>Handheld microphone and laptop</td>
+<td>Mic pointed at the receiving phone, cabled to a laptop</td>
+<td>1 each</td>
+<td>00:27:33</td>
+<td>[shown]</td>
+</tr>
+<tr>
+<td>Squishmallows</td>
+<td>Cover the receiving phone and mic to block leakage from the speaker</td>
+<td>several</td>
+<td>00:27:38</td>
+<td>[shown] [stated]</td>
+</tr>
+</tbody>
+</table>
+<h2 id="4-tools-and-software">4. Tools and software</h2>
+<table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>Used for</th>
+<th>System</th>
+<th>Tag</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Python 3.14, project <code>Planev2</code></td>
+<td>All pipeline code, over 5,000 lines</td>
+<td>S1 to S6</td>
+<td>[shown 00:02:08] [stated 00:02:00]</td>
+</tr>
+<tr>
+<td>NumPy</td>
+<td>Vectorised geometry and Doppler code in <code>v31.py</code></td>
+<td>S3, S5</td>
+<td>[shown 00:02:08]</td>
+</tr>
+<tr>
+<td>Polars</td>
+<td>Exploding and normalising FR24 trails</td>
+<td>S1</td>
+<td>[shown 00:03:13]</td>
+</tr>
+<tr>
+<td><code>asyncio</code>-style <code>async def</code>, <code>csv</code>, <code>zoneinfo</code></td>
+<td>Phase 1 sweep, CSV logs, local-to-UTC conversion</td>
+<td>S1</td>
+<td>[shown 00:03:09]</td>
+</tr>
+<tr>
+<td><code>pyfr24</code> (stiles/pyfr24, v0.3.0, CC0-1.0)</td>
+<td>Flightradar24 client</td>
+<td>S1</td>
+<td>[shown 00:03:04]</td>
+</tr>
+<tr>
+<td>Flightradar24 web map</td>
+<td>Illustrates ADS-B. The paid API was mentioned and not used.</td>
+<td>S1</td>
+<td>[shown 00:02:47] [stated 00:02:57]</td>
+</tr>
+<tr>
+<td>Parquet</td>
+<td>Storage for the 50 GB flight data</td>
+<td>S1</td>
+<td>[stated 00:02:06]</td>
+</tr>
+<tr>
+<td>QGIS</td>
+<td>Map layers, Identify Results, Measure tool (ellipsoidal), Copy Coordinate</td>
+<td>S3, S4, S7</td>
+<td>[shown 00:04:26] [shown 00:25:27]</td>
+</tr>
+<tr>
+<td>Custom spectrogram app</td>
+<td>Waveform and spectrogram "Multi-view", Selection analysis panel, Settings panel. Its status bar reads "Claude Code".</td>
+<td>S2</td>
+<td>[shown 00:01:28], built with Claude Code [inferred M1-I03]</td>
+</tr>
+<tr>
+<td>"Doppler Curve Fit" page</td>
+<td>Ideal-curve sliders over a spectrogram, snapshot log</td>
+<td>S2</td>
+<td>[shown 00:08:57]</td>
+</tr>
+<tr>
+<td>"CPA Timeline" page</td>
+<td>Illustrates the 920 s window check</td>
+<td>S4</td>
+<td>[shown 00:07:13]</td>
+</tr>
+<tr>
+<td>Interactive demos</td>
+<td>Radial-velocity explorer, curve-shape explorer, "Building the Doppler Curve, Step by Step"</td>
+<td>S5</td>
+<td>[shown 00:15:09] [shown 00:16:45]</td>
+</tr>
+<tr>
+<td>Scoring viewers</td>
+<td>"Right vs Wrong Model", locked dt overview, score scatter, "Top 7 flight-pair combos", single-event histograms and top-8 panels</td>
+<td>S6</td>
+<td>[shown 00:17:48] [shown 00:21:07] [shown 00:23:22]</td>
+</tr>
+<tr>
+<td>Plotly</td>
+<td>Plot library for the pages above, judged from the toolbar</td>
+<td>S2, S4, S6</td>
+<td>[inferred M10-I08]</td>
+</tr>
+<tr>
+<td>PyCharm-style IDE</td>
+<td>Editing the scripts</td>
+<td>all</td>
+<td>[shown 00:02:08], identity [inferred M1-I04]</td>
+</tr>
+<tr>
+<td>Audacity</td>
+<td>Frequency-boosted playback, high-pass, Amplify, MP3 export, spectral selection</td>
+<td>S2, S8</td>
+<td>[shown 00:03:49] [shown 00:26:31]</td>
+</tr>
+<tr>
+<td>Spreadsheet app</td>
+<td>Viewing <code>flight_ids_airborne</code></td>
+<td>S1</td>
+<td>[shown 00:03:56]</td>
+</tr>
+<tr>
+<td>Google Maps and Street View</td>
+<td>Ground truth</td>
+<td>S7</td>
+<td>[shown 00:25:30]</td>
+</tr>
+<tr>
+<td>Google Earth flight sim</td>
+<td>Illustration only</td>
+<td>none</td>
+<td>[shown 00:13:56]</td>
+</tr>
+</tbody>
+</table>
+<p>Scripts and files seen in the project tree [shown 00:02:08] [shown 00:03:09]:</p>
+<ul>
+<li>Pipeline: <code>v17.py</code> to <code>v31.py</code>, <code>v20 - best.py</code>, <code>v22 plus elev test.py</code>, <code>v23 scoring based...</code>, <code>1.1 v8 CRS fix.py</code>, <code>1.1b v2 aggregate.py</code>, <code>1.2a v9.py</code>, <code>1.2a v10.py</code>, <code>1_2b_v7.py</code> [shown 00:21:07].</li>
+<li>Data: <code>download flightpaths v6.py</code>, <code>download DEM.py</code>, <code>check jets in outputs.py</code>, <code>remove jets from ca...</code>, <code>save filtered flightp...</code>, <code>all flightlines to gpkg...</code>, <code>all flightpaths as gpkg...</code>, <code>flights to GPKG poi...</code>, <code>flight ID to gpkg do...</code>, <code>csv check.py</code>.</li>
+<li>Audio and tools: <code>spectro measurer v3.py</code>, <code>curve trace v1.py</code>, <code>audio measure temp.py</code>, <code>audio trim.py</code>, <code>event_data.py</code>, <code>event candidate polyli...</code>, <code>doppler explorer html drag point and curve.py</code>, <code>doppler_explorer.html</code>, <code>radial_velocity_explor...</code>, <code>funnel charts.py</code>, <code>3d demo.py</code>, <code>crop vid.py</code>.</li>
+</ul>
+<h2 id="5-build-plan">5. Build plan</h2>
+<p>Build in this order. Each milestone ends in a check you can run against numbers from the video.</p>
+<h3 id="m1-find-the-doppler-curves-in-the-recording">M1. Find the Doppler curves in the recording</h3>
+<p>Video 00:00:17 to 00:02:37. System S2.</p>
+<p><strong>Prerequisites.</strong> The 60:00 file [shown 00:03:55] or the full recording linked in the description [stated]. A spectrogram viewer that sets the band and the FFT window.</p>
+<p><strong>Steps.</strong></p>
+<ol>
+<li>Open the file. It is 60:00.000 long with CH 1 and CH 2 [shown 00:01:20]. Nothing is audible, and the waveform stays within about ±0.006 of full scale [shown 00:01:20].</li>
+<li>Open the spectrogram with a Hamming window, zero padding 1, a linear frequency scale, a 5 Hz minimum, and 20 dB gain [shown 00:01:42].</li>
+<li>Set the maximum frequency to 800 Hz [shown 00:01:43].</li>
+<li>Raise the window size from 2048 through 4096 and 8192 to 16384. The curves sharpen at each step [shown 00:01:45].</li>
+<li>Find E0 near 1258 to 1295 s, falling from about 500 to 330 Hz [shown 00:01:52].</li>
+<li>Find E1 near 2090 to 2180 s. It is louder, with traces near 2x and 3x its fundamental [shown 00:02:31] [stated 00:02:25].</li>
+<li>Zoom out to 1600 to 3400 s and find E2 near 3035 to 3117 s [shown 00:02:34].</li>
+</ol>
+<p><strong>Acceptance.</strong> E0, E1, and E2 are visible at those file times, and E1 shows harmonics. Values read off axis ticks may be off by about 5 s and 20 Hz [inferred M1-I11].</p>
+<p><img alt="Known facts on screen" src="../03_breakdowns/M1/frames/M1_000027.png" />
+<img alt="Window 16384 and a 5 to 800 Hz band reveal E0" src="../03_breakdowns/M1/frames/M1_000150.png" />
+<img alt="E1, louder, with harmonics" src="../03_breakdowns/M1/frames/M1_000231.png" />
+<img alt="E2 selected at 3035 to 3117 s" src="../03_breakdowns/M1/frames/M1_000234.png" /></p>
+<h3 id="m2-download-ads-b-data-and-keep-propeller-aircraft">M2. Download ADS-B data and keep propeller aircraft</h3>
+<p>Video 00:02:37 to 00:04:14. System S1.</p>
+<p><strong>Prerequisites.</strong> Python with <code>pyfr24</code> v0.3.0 [shown 00:03:04] and Polars [shown 00:03:13]. Access to Flightradar24 trails [inferred M2-I04]. The ICAO DOC 8643 table [shown 00:04:02].</p>
+<p><strong>Steps.</strong></p>
+<ol>
+<li>Run Phase 1, the flight-ID discovery sweep. Step through timestamps across the local day of September 8 and query <code>BBOX_TARGET</code> at each. If a query returns <code>FLIGHT_LIMIT</code> flights or more, split the box into south and north halves and recurse [shown 00:03:09].</li>
+<li>Drop flights whose <code>max_alt</code> is not above 0. Write the rest to <code>FLIGHT_IDS_AIRBORNE_CSV</code> [shown 00:03:11].</li>
+<li>Run Phase 2. For each airborne flight, fetch the full trail, explode <code>flight_trail_list</code>, map column names with <code>standardize_rows</code>, and append the rows to the tracks CSV. Log each fetch keyed by (<code>flightid</code>, <code>target_ts</code>) so reruns skip finished work [shown 00:03:11].</li>
+<li>Join <code>typecode</code> to the ICAO Type Designator. Remove flights whose Engine Type is Jet and keep unknown types [stated 00:04:05].</li>
+<li>Plot the tracks in QGIS. Whole trails reach Hawaii and other countries [stated 00:03:15].</li>
+</ol>
+<p><strong>Acceptance.</strong> A per-flight table with the nine columns shown at 00:03:56, a tracks table with the nine fields of <code>standardize_rows</code>, and a map of non-jet tracks like the one at 00:04:12 [shown].</p>
+<p><img alt="Phase 1 sweep code" src="../03_breakdowns/M2/frames/M2_000309.png" />
+<img alt="Per-flight table with typecode" src="../03_breakdowns/M2/frames/M2_000356.png" />
+<img alt="ICAO DOC 8643 table with Engine Type" src="../03_breakdowns/M2/frames/M2_000402.png" />
+<img alt="Tracks after removing known jets" src="../03_breakdowns/M2/frames/M2_000412.png" /></p>
+<h3 id="m3-lay-the-grid-and-compute-delayed-cpa-times">M3. Lay the grid and compute delayed CPA times</h3>
+<p>Video 00:04:14 to 00:07:04. Systems S3 and S4.</p>
+<p><strong>Prerequisites.</strong> M2 tracks. A continental-US DEM such as <code>dem_mosaic_1km</code> [shown 00:06:20].</p>
+<p><strong>Steps.</strong></p>
+<ol>
+<li>Resample each track to one point per second, as in layer <code>flight_1099966250_track_1sec</code> [shown 00:04:26] [inferred M3-I03].</li>
+<li>Lay a 200 m grid of observer points within 10 km of the track [stated 00:04:32] [stated 00:05:12].</li>
+<li>Sample the DEM at each grid point for ground elevation [stated 00:06:18].</li>
+<li>For each grid point, find the CPA and record its time and 3D slant distance [stated 00:05:26] [inferred M3-I12].</li>
+<li>Add the sound travel time, slant distance divided by the speed of sound, to get the delayed CPA time [stated 00:05:38] [inferred M3-I13].</li>
+<li>Repeat for every flight and merge the results per grid point [stated 00:06:41].</li>
+</ol>
+<p><strong>Acceptance.</strong> Each point holds <code>n_flights</code>, <code>flight_ids</code>, and <code>retarded_cpa_times</code> [shown 00:06:58]. For flight 1099966250, grid point fid 43956 has <code>retarded_cpa_time</code> 22:46:46, <code>cpa_distance_m</code> 3364.77, and <code>ground_elevation_m</code> 257.48 [shown 00:06:32]. Reproducing this needs the point's coordinates, which are not shown [inferred M3-I01].</p>
+<p><img alt="200 m grid around one flight" src="../03_breakdowns/M3/frames/M3_000432.png" />
+<img alt="Track point nearest the observer, 22:46:36" src="../03_breakdowns/M3/frames/M3_000536.png" />
+<img alt="Grid point with retarded_cpa_time 22:46:46" src="../03_breakdowns/M3/frames/M3_000632.png" />
+<img alt="Merged point with eight flights" src="../03_breakdowns/M3/frames/M3_000658.png" /></p>
+<h3 id="m4-filter-grid-points-by-the-920-s-offset">M4. Filter grid points by the 920 s offset</h3>
+<p>Video 00:07:04 to 00:08:21. System S4.</p>
+<p><strong>Prerequisites.</strong> The M3 merged layer.</p>
+<p><strong>Steps.</strong></p>
+<ol>
+<li>For each point, look for two delayed CPA times from different flights whose difference is 920 s within ±5 s [stated 00:07:34] [inferred M4-I06] [inferred M4-I08].</li>
+<li>Keep the point together with each qualifying flight pair [inferred M4-I03].</li>
+</ol>
+<p><strong>Acceptance.</strong> About 35,000 points survive in the test area, in strips along tracks [stated 00:07:49]. The test area is under 0.05% of continental US land [stated 00:07:55]. That count is too high for a US-wide search, which motivates M5 [stated 00:08:21].</p>
+<p><img alt="Both window edges land on CPA times" src="../03_breakdowns/M4/frames/M4_000730.png" />
+<img alt="Tolerance band on each window edge" src="../03_breakdowns/M4/frames/M4_000743.png" />
+<img alt="About 35,000 surviving points" src="../03_breakdowns/M4/frames/M4_000752.png" /></p>
+<h3 id="m5-measure-speed-slant-distance-cpa-time-and-f0">M5. Measure speed, slant distance, CPA time, and f0</h3>
+<p>Video 00:08:21 to 00:10:38. System S2.</p>
+<p><strong>Prerequisites.</strong> M1. A fit tool that overlays an ideal curve on one event window, with sliders f0, v, d, and t0 [shown 00:08:57]. Section 6 gives the formulas.</p>
+<p><strong>Steps.</strong></p>
+<ol>
+<li>Open the event window. For E2 the window is 01:50:30 to 01:52:15 elapsed [shown 00:08:57].</li>
+<li>Move v to set the size of the drop and d to set its steepness [stated 00:08:58].</li>
+<li>Fit the receding side. The approaching side does not match an ideal curve [stated 00:09:51].</li>
+<li>Bracket the speed generously. 100 m/s fits the receding side, and 69.5 m/s clearly misses [shown 00:10:06] [shown 00:10:13].</li>
+<li>Trade t0 against f0. Moving t0 from 1:51:15.90 to 1:51:12.90 and f0 from 131.5 to 133.5 Hz still fits [shown 00:10:30].</li>
+<li>Take snapshots at the ends of the range. The log reports MIN, MAX, and BEST as the midpoint [shown 00:10:18] [inferred M5-I13].</li>
+<li>Repeat for E1.</li>
+</ol>
+<p><strong>Acceptance.</strong> E1 is 130 to 154 m/s and 4300 to 7800 m at CPA. E2 is 88 to 110 m/s and 1390 to 4690 m. The gap is 920 s [shown 00:10:35]. The section 6 formulas reproduce the tool's readouts within 0.005 on all 13 slider settings in the M5 breakdown [inferred M5-I07].</p>
+<p><img alt="Plausible fit on E2" src="../03_breakdowns/M5/frames/M5_000912.png" />
+<img alt="t0 moved earlier and f0 raised to 133.5 Hz" src="../03_breakdowns/M5/frames/M5_001030.png" />
+<img alt="Measured ranges for both events" src="../03_breakdowns/M5/frames/M5_001035.png" /></p>
+<h3 id="m6-apply-speed-slant-distance-and-silence-filters">M6. Apply speed, slant-distance, and silence filters</h3>
+<p>Video 00:10:38 to 00:13:35. Systems S1, S3, and S4.</p>
+<p><strong>Prerequisites.</strong> M2 tracks, M3 geometry, M5 ranges.</p>
+<p><strong>Steps.</strong></p>
+<ol>
+<li>Cut tracks into segments whose speed is in the E1 range, drawn green, and in the E2 range, drawn pink [shown 00:10:43] [shown 00:10:48] [inferred M6-I12].</li>
+<li>Place candidate points only in each segment's measured slant-distance band, 4300 to 7800 m for green and 1390 to 4690 m for pink [stated 00:10:59] [shown 00:10:55].</li>
+<li>Keep points that hear a green segment and then a pink segment 920 s later [stated 00:10:49]. About 73,000 pass, mostly around airports [stated 00:11:10] [stated 00:11:26].</li>
+<li>Drop any point that would hear another flight between the two events. A point hears a flight if its CPA slant distance is at most the larger of the two event distances, with no multiplier [shown 00:12:11].</li>
+</ol>
+<p><strong>Acceptance.</strong> About 15,000 points remain [stated 00:12:49].</p>
+<p><img alt="Green E1 and pink E2 segments" src="../03_breakdowns/M6/frames/M6_001048.png" />
+<img alt="Silence filter logic" src="../03_breakdowns/M6/frames/M6_001211.png" />
+<img alt="About 15,000 points after the silence filter" src="../03_breakdowns/M6/frames/M6_001303.png" /></p>
+<h3 id="m7-forward-model-the-curve-from-real-flight-geometry">M7. Forward-model the curve from real flight geometry</h3>
+<p>Video 00:13:35 to 00:16:45. System S5.</p>
+<p><strong>Prerequisites.</strong> M3 geometry and f0 from M5.</p>
+<p><strong>Steps.</strong></p>
+<ol>
+<li>For a time t, look up the aircraft state on the interpolated track [stated 00:15:51] [inferred M7-I01].</li>
+<li>Project the velocity onto the line between aircraft and observer to get the radial velocity v_r [stated 00:14:57].</li>
+<li>Apply <code>f = f0 * c / (c + v_r)</code> [shown 00:16:07].</li>
+<li>Repeat for every time step [stated 00:16:39].</li>
+</ol>
+<p><strong>Acceptance.</strong> With f0 130 Hz and c 343 m/s, the demo values reproduce. A v_r of 0.00 m/s gives 130.00 Hz, 62.73 m/s gives 109.90 Hz, and 130.80 m/s gives 94.11 Hz [shown 00:16:25] [shown 00:16:34]. This version uses the state at reception time, which the creator says would make the search fail [stated 00:16:43]. M8 replaces it.</p>
+<p><img alt="Observer to the side, radial velocity near zero" src="../03_breakdowns/M7/frames/M7_001519.png" />
+<img alt="A bent track changes the curve shape" src="../03_breakdowns/M7/frames/M7_001535.png" />
+<img alt="Second modelled point, 109.90 Hz" src="../03_breakdowns/M7/frames/M7_001634.png" /></p>
+<h3 id="m8-correct-the-model-for-sound-travel-time">M8. Correct the model for sound travel time</h3>
+<p>Video 00:16:45 to 00:18:10. Systems S3 and S5.</p>
+<p><strong>Prerequisites.</strong> M7.</p>
+<p><strong>Steps.</strong></p>
+<ol>
+<li>For each reception time t_r, solve <code>t_r = t_e + r(t_e) / c</code> for the emission time t_e [shown 00:17:14].</li>
+<li>Take the aircraft position and velocity at t_e, compute v_r, and apply the Doppler equation [shown 00:17:21].</li>
+<li>Run the model for every candidate point and flight [stated 00:17:56].</li>
+</ol>
+<p><strong>Acceptance.</strong> The demo rows reproduce. A t_r of 0.00 s gives t_e -4.539 s, r 1557 m, v_r -57.97 m/s, and 156.44 Hz. A t_r of 15.00 s gives t_e 9.352 s and 101.58 Hz. A t_r of 25.00 s gives t_e 16.910 s and 96.07 Hz [shown 00:17:21] [shown 00:17:25]. On real E1 data with flight 1100069709, the emission-time curve fits at Δt -0.60 s. The naive curve misfits even at Δt -21.90 s [shown 00:17:53] [shown 00:17:54].</p>
+<p><img alt="Emission-time construction" src="../03_breakdowns/M8/frames/M8_001721.png" />
+<img alt="Naive curve over the real spectrogram" src="../03_breakdowns/M8/frames/M8_001753.png" />
+<img alt="Emission-time curve over the real spectrogram" src="../03_breakdowns/M8/frames/M8_001754.png" /></p>
+<h3 id="m9-score-modelled-curves-with-locked-two-event-scoring">M9. Score modelled curves with locked two-event scoring</h3>
+<p>Video 00:18:10 to 00:20:59. System S6.</p>
+<p><strong>Prerequisites.</strong> M6 candidates, the M8 model, and the M5 measurements.</p>
+<p><strong>Steps.</strong></p>
+<ol>
+<li>Draw the modelled curve on the spectrogram and sum the brightness under it [stated 00:18:22].</li>
+<li>Place E1 by putting its modelled delayed CPA at the measured audio CPA time [stated 00:19:04].</li>
+<li>Sweep a few seconds of time offset and a range of f0 for E1, and keep the best combination [stated 00:19:15].</li>
+<li>Place E2 with the same time offset, so its position relative to E1 comes only from geometry. Sweep its f0 only [stated 00:19:30] [shown 00:19:27].</li>
+<li>Densify the survivors from 200 m to 100 m and score them again. On the 200 m grid the true point can sit up to 141 m from the nearest grid point [stated 00:20:22] [stated 00:20:27].</li>
+</ol>
+<p><strong>Acceptance.</strong> Every 100 m candidate has an E1 score and an E2 score [stated 00:21:04]. About 15,000 points become about 30,000 to 40,000 [stated 00:20:44].</p>
+<p><img alt="Best E1 offset and f0" src="../03_breakdowns/M9/frames/M9_001925.png" />
+<img alt="Locked two-event scoring page" src="../03_breakdowns/M9/frames/M9_001927.png" />
+<img alt="200 m grid with a 140 m measurement" src="../03_breakdowns/M9/frames/M9_002022.png" /></p>
+<h3 id="m10-rank-candidates-by-flight-pair-and-inspect-the-top-hits">M10. Rank candidates by flight pair and inspect the top hits</h3>
+<p>Video 00:20:59 to 00:22:41. Systems S6 and S7.</p>
+<p><strong>Prerequisites.</strong> M9 scores.</p>
+<p><strong>Steps.</strong></p>
+<ol>
+<li>Plot E1 score against E2 score for every candidate. The plot holds 29,245 points [shown 00:21:07].</li>
+<li>Group by (<code>flight1</code>, <code>flight2</code>) and keep the point with the highest <code>match_score</code>, which is <code>score_1 + score_2</code> [shown 00:21:29] [shown 00:21:39].</li>
+<li>Rank the 195 pairs and inspect the top 7 with model overlays on both events [shown 00:21:42].</li>
+<li>Rerun scoring at much finer resolution for the winning flights only. Draw heat maps for E1, E2, and both combined [stated 00:22:26] [shown 00:22:40].</li>
+</ol>
+<p><strong>Acceptance.</strong> The leader is flights 1100069709 and 1100048665 at 40.876466, -73.524951, with scores 10.638, 9.845, and 20.483 [shown 00:21:39]. The runner-up scores 15.25 [shown 00:21:54]. The combined heat map has one peak on a bay shoreline [shown 00:22:40].</p>
+<p><img alt="Best point per flight pair, one leader" src="../03_breakdowns/M10/frames/M10_002132.png" />
+<img alt="Top 7 flight-pair combos page" src="../03_breakdowns/M10/frames/M10_002142.png" />
+<img alt="Combined fine heat map" src="../03_breakdowns/M10/frames/M10_002240.png" /></p>
+<h3 id="m11-confirm-with-a-one-minute-known-time-clip-and-street-view">M11. Confirm with a one-minute known-time clip and Street View</h3>
+<p>Video 00:22:41 to 00:26:08. Systems S1, S2, S5, S6, and S7.</p>
+<p><strong>Prerequisites.</strong> M1 to M10. QGIS, Google Maps, and Street View.</p>
+<p><strong>Steps.</strong></p>
+<ol>
+<li>Take one minute of audio around E0. Assume the recording time is 8:37 PM UTC [stated 00:23:02].</li>
+<li>Measure E0 as in M5 to get velocity bounds [stated 00:23:09]. Keep only flight segments within the bounds and near that time, across the whole continental US [stated 00:23:12]. The creator's table gives a 1 hour window [shown 00:24:58].</li>
+<li>Trace E0 as a line, because it is too faint for brightness scoring [stated 00:23:34].</li>
+<li>Score each candidate's modelled curve by its closeness to the line, and keep the best point per flight [stated 00:23:39] [shown 00:23:26].</li>
+<li>In QGIS, zoom to the centre of the heat map. It sits in water, so take a point on the bank [stated 00:25:20]. Copy the coordinate as EPSG:4326 [shown 00:25:27].</li>
+<li>Open the coordinate in Google Maps and Street View. Match the V-shaped tree, the point, and the rounded part of the tree line [stated 00:25:37]. Tilt up the pole to find the camera [stated 00:26:04].</li>
+</ol>
+<p><strong>Acceptance.</strong> 380,127 points are scored across 253 flights [shown 00:23:22] [shown 00:23:26]. The top single-event point is flight 1100029523 at 40.877922, -73.531941, score -1.74, dt +0.45 s [shown 00:23:31]. The coordinate 40.8767282, -73.5264340 opens on 19 Bayview Ave, Oyster Bay, where Street View shows the camera on a pole [shown 00:25:42] [shown 00:26:05].</p>
+<p><img alt="Single-event top flights with the traced line" src="../03_breakdowns/M11/frames/M11_002331.png" />
+<img alt="Copy Coordinate in EPSG:4326" src="../03_breakdowns/M11/frames/M11_002527.png" />
+<img alt="Source footage and Street View side by side" src="../03_breakdowns/M11/frames/M11_002600.png" />
+<img alt="Security camera on the pole" src="../03_breakdowns/M11/frames/M11_002605.png" /></p>
+<h3 id="m12-test-countermeasures">M12. Test countermeasures</h3>
+<p>Video 00:26:08 to 00:28:09. Systems S8 and S2.</p>
+<p><strong>Prerequisites.</strong> Audacity, audio with known curves, and the rig in section 3.</p>
+<p><strong>Steps.</strong></p>
+<ol>
+<li>Load the test audio in Audacity and apply <strong>Effect</strong> &gt; <strong>EQ and Filters</strong> &gt; <strong>High-Pass Filter</strong> [shown 00:26:31]. Export as MP3 and reopen [shown 00:26:35] [shown 00:26:37].</li>
+<li>Apply <strong>Effect</strong> &gt; <strong>Volume and Compression</strong> &gt; <strong>Amplify</strong> and look for the curves [shown 00:26:41].</li>
+<li>Play a curve from the JBL speaker under speech, then look for it in the speech recording [stated 00:26:54] [shown 00:26:58].</li>
+<li>Play a curve from the JBL speaker into one phone on a call. In another room, record the receiving phone with a mic, both covered with Squishmallows [shown 00:27:33] [stated 00:27:38].</li>
+</ol>
+<p><strong>Acceptance.</strong> The curve vanishes after high-pass and MP3 export, then returns after Amplify at about 140 to 370 Hz [shown 00:26:42]. The masked curve shows at about 100 to 60 Hz under speech [shown 00:26:58]. The call recording shows a curve falling from about 200 to 175 Hz, with a gap [shown 00:27:53].</p>
+<p><img alt="Curve back after Amplify" src="../03_breakdowns/M12/frames/M12_002642.png" />
+<img alt="Masked curve under speech" src="../03_breakdowns/M12/frames/M12_002658.png" />
+<img alt="Curve through a phone call" src="../03_breakdowns/M12/frames/M12_002753.png" />
+<img alt="Countermeasure summary list" src="../03_breakdowns/M12/frames/M12_002759.png" /></p>
+<h2 id="6-per-system-detailed-design">6. Per-system detailed design</h2>
+<p>The video shows parts of one script, <code>v31.py</code>, plus tool screens and readouts. Code marked [shown] is transcribed from the screen. Pseudocode marked [inferred] is a reconstruction that follows the stated method. It is not the creator's code. Where the video shows numbers, section 5 lists them as acceptance checks.</p>
+<h3 id="shared-constants-and-parameters">Shared constants and parameters</h3>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Value</th>
+<th>Used by</th>
+<th>Tag</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>C_SOUND</code></td>
+<td>343 m/s</td>
+<td>S2, S3, S5</td>
+<td>demo pages [shown 00:16:09] [shown 00:17:21], pipeline value [inferred M1-I14] [inferred M3-I18]</td>
+</tr>
+<tr>
+<td><code>FT_TO_M</code>, <code>KT_TO_MS</code>, <code>FPM_TO_MS</code></td>
+<td>0.3048, 0.514444, 0.00508</td>
+<td>S1, S3, S5</td>
+<td>names [shown 00:02:08], values [inferred M1-I14]</td>
+</tr>
+<tr>
+<td>Metres per degree</td>
+<td>111,320, times cos(latitude) for longitude</td>
+<td>S3, S5</td>
+<td>[shown 00:02:08]</td>
+</tr>
+<tr>
+<td>Search grid spacing</td>
+<td>200 m</td>
+<td>S4</td>
+<td>[stated 00:04:32]</td>
+</tr>
+<tr>
+<td>First-pass grid radius</td>
+<td>10 km</td>
+<td>S4</td>
+<td>[stated 00:05:12]</td>
+</tr>
+<tr>
+<td>Event gap</td>
+<td>920 s</td>
+<td>S4, S6</td>
+<td>[shown 00:02:56]</td>
+</tr>
+<tr>
+<td>Gap tolerance</td>
+<td>about ±5 s</td>
+<td>S4</td>
+<td>[stated 00:07:34]</td>
+</tr>
+<tr>
+<td>E1 speed and CPA distance</td>
+<td>130 to 154 m/s, 4300 to 7800 m</td>
+<td>S1, S4</td>
+<td>[shown 00:10:35]</td>
+</tr>
+<tr>
+<td>E2 speed and CPA distance</td>
+<td>88 to 110 m/s, 1390 to 4690 m</td>
+<td>S1, S4</td>
+<td>[shown 00:10:35]</td>
+</tr>
+<tr>
+<td>Silence hearing threshold</td>
+<td>max(E1 CPA distance, E2 CPA distance), multiplier 1.0</td>
+<td>S4</td>
+<td>[shown 00:12:11]</td>
+</tr>
+<tr>
+<td>Emission-time iterations</td>
+<td>6</td>
+<td>S3, S5</td>
+<td>[shown 00:02:08]</td>
+</tr>
+<tr>
+<td>Minimum valid frames per curve</td>
+<td>5</td>
+<td>S5</td>
+<td>[shown 00:02:08]</td>
+</tr>
+<tr>
+<td>Curve oversampling</td>
+<td>3</td>
+<td>S5, S6</td>
+<td>[shown 00:02:08], meaning [inferred D-03]</td>
+</tr>
+<tr>
+<td>Scoring grid spacing</td>
+<td>100 m</td>
+<td>S6</td>
+<td>[stated 00:20:27]</td>
+</tr>
+<tr>
+<td>Time-offset sweep</td>
+<td>±3 s in 0.05 s steps</td>
+<td>S6</td>
+<td>[inferred M9-I10]</td>
+</tr>
+<tr>
+<td>f0 sweep</td>
+<td>±2 Hz in 0.5 Hz steps</td>
+<td>S6</td>
+<td>[inferred M9-I11]</td>
+</tr>
+<tr>
+<td>Single-event time window</td>
+<td>1 hour</td>
+<td>S1</td>
+<td>[shown 00:24:58], centring [inferred M11-I09]</td>
+</tr>
+</tbody>
+</table>
+<p>A rebuild can hold the event values in one config file. Values carry their tags.</p>
+<pre><code class="language-toml">[recording]
+file = &quot;oyster bay_20260913T191804Z_60to120min&quot;   # [shown 00:03:55]
+elapsed_minus_file_s = 3600                       # [inferred D-01]
+
+[event.E1]
+cpa_elapsed_s = 5752          # 1:35:52 [shown 00:19:27]
+f0_hz = 112.5                 # [shown 00:17:53]
+speed_ms = [130, 154]         # [shown 00:10:35]
+cpa_slant_m = [4300, 7800]    # [shown 00:10:35]
+scored_window_s = [5690, 5875]  # panel span [shown 00:19:27], use as window [inferred D-04]
+
+[event.E2]
+cpa_elapsed_s = 6673          # 1:51:13 label [shown 00:19:27], fit t0 6672.9 to 6675.9 [shown 00:10:30]
+f0_hz = 131.5                 # range 130.0 to 133.5 [shown 00:10:30]
+speed_ms = [88, 110]          # [shown 00:10:35]
+cpa_slant_m = [1390, 4690]    # [shown 00:10:35]
+scored_window_s = [6630, 6735]  # [shown 00:08:57], use as window [inferred D-04]
+
+[pair]
+gap_s = 920                   # [shown 00:02:56]
+gap_tol_s = 5                 # [stated 00:07:34]
+
+[event.E0]
+cpa_elapsed_s = 4876          # 1:21:16 [shown 00:23:31]
+known_time_utc = &quot;20:37&quot;      # [stated 00:23:02]
+traced_window_s = [4852, 4910]  # [shown 00:23:31]
+</code></pre>
+<h3 id="s1-ads-b-ingest-and-aircraft-filtering">S1. ADS-B ingest and aircraft filtering</h3>
+<p><strong>Data shapes.</strong> Field names are [shown 00:03:13] [shown 00:03:56] [shown 00:04:26]. Types and units are [inferred M2-I01] [inferred M2-I02] [inferred M3-I03]. <code>Segment</code> is [inferred M6-I01].</p>
+<pre><code class="language-text">FlightMeta  flightid:int64  registration:str  typecode:str  callsign:str
+            first_seen_utc:int64  last_seen_utc:int64  max_alt:float(ft)  sample_lat  sample_lon
+TrackPoint  flightid:int64  timestamp:int64(epoch s)  latitude  longitude  altitude:float(ft)
+            ground_speed:float(kt)  track:float(deg)  vertical_speed:float(ft/min)  source:str
+Track1s     fid  timestamp  utc_time  lat  lon  alt_ft  gs_kt  vs_fpm  track_deg  valid:bool
+IcaoType    Manufacturer  Model  Type Designator  Description  Engine Type  Engine Count  WTC
+Segment     flightid  event(1|2)  t_start  t_end
+</code></pre>
+<p><strong>Phase 1, flight-ID discovery.</strong> <code>build_timestamps()</code> steps from <code>SWEEP_START_LOCAL</code> to <code>SWEEP_END_LOCAL</code> every <code>MINUTES_BETWEEN_SNAPSHOTS</code> minutes and converts each step to UTC epoch seconds [shown 00:03:09]. <code>process_query()</code> queries one box at one timestamp. Condensed from the screen [shown 00:03:09]:</p>
+<pre><code class="language-python">async def process_query(fr24, bbox: BoundingBox, ts: int, limiter: Phase1RateLimiter, ...):
+    ...
+    n = len(table)
+    if n &gt;= FLIGHT_LIMIT:
+        append_query_log(bbox, ts, &quot;truncated_split&quot;, n, True)
+        done.add(key)
+        mid = (bbox.south + bbox.north) / 2
+        south_half = BoundingBox(south=bbox.south, north=mid, west=bbox.west, east=bbox.east)
+        north_half = BoundingBox(south=mid, north=bbox.north, west=bbox.west, east=bbox.east)
+        await process_query(fr24, south_half, ts, limiter, done, flights, depth + 1, local_dt)
+        await process_query(fr24, north_half, ts, limiter, done, flights, depth + 1, local_dt)
+        return
+    append_query_log(bbox, ts, &quot;ok&quot;, n, False)
+    done.add(key)
+    merge_flight_ids(flights, table, ts)
+    save_flight_ids(flights)
+
+airborne = {fid: row for fid, row in flights.items() if float(row[&quot;max_alt&quot;] or 0) &gt; 0}
+</code></pre>
+<p>The query log makes Phase 1 resumable. <code>load_query_log()</code> returns the finished keys, and <code>load_flight_ids()</code> returns the known flights [shown 00:03:09]. The values of <code>BBOX_TARGET</code>, <code>FLIGHT_LIMIT</code>, <code>MINUTES_BETWEEN_SNAPSHOTS</code>, and the sweep window are not shown [inferred M2-I05]. <code>Phase1RateLimiter</code> settings are not shown [inferred M2-I06].</p>
+<p><strong>Phase 2, trail download.</strong> <code>load_targets()</code> reads the airborne flights sorted by <code>first_seen_utc</code>. <code>load_done_flights()</code> skips any (<code>flightid</code>, <code>target_ts</code>) logged with status "ok". Its docstring says FR24 numeric IDs are recycled across different flights, so the flight ID alone is not a safe key [shown 00:03:11]. <code>explode_trail()</code> explodes and unnests <code>flight_trail_list</code>. <code>standardize_rows()</code> maps column names [shown 00:03:13]:</p>
+<table>
+<thead>
+<tr>
+<th>Output field</th>
+<th>Accepted input names</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>timestamp</code></td>
+<td><code>timestamp</code>, <code>timestamp_ms</code></td>
+</tr>
+<tr>
+<td><code>latitude</code></td>
+<td><code>latitude</code>, <code>lat</code></td>
+</tr>
+<tr>
+<td><code>longitude</code></td>
+<td><code>longitude</code>, <code>lon</code></td>
+</tr>
+<tr>
+<td><code>altitude</code></td>
+<td><code>altitude</code>, <code>alt</code></td>
+</tr>
+<tr>
+<td><code>ground_speed</code></td>
+<td><code>ground_speed</code>, <code>spd</code>, <code>gspeed</code></td>
+</tr>
+<tr>
+<td><code>track</code></td>
+<td><code>track</code>, <code>heading</code></td>
+</tr>
+<tr>
+<td><code>vertical_speed</code></td>
+<td><code>vertical_speed</code>, <code>vspeed</code></td>
+</tr>
+</tbody>
+</table>
+<p>The shown code copies <code>timestamp_ms</code> into <code>timestamp</code> without converting units [shown 00:03:13].</p>
+<p><strong>Jet filter.</strong> <code>keep(flight) = EngineType(typecode) != "Jet"</code>. Missing and unknown type codes stay, because the lookup has gaps [stated 00:04:05]. Whether turboprops and helicopters stay is [inferred M2-I08].</p>
+<p><strong>1 s tracks and velocity segments.</strong> [inferred M3-I03] [inferred M6-I12] [inferred M7-I01]</p>
+<pre><code class="language-python">def resample_1s(tp):                                   # tp: TrackPoint rows of one flight, sorted
+    t = np.arange(np.ceil(tp.timestamp[0]), np.floor(tp.timestamp[-1]) + 1)
+    out = {k: np.interp(t, tp.timestamp, tp[k]) for k in (&quot;latitude&quot;, &quot;longitude&quot;, &quot;altitude&quot;,
+                                                          &quot;ground_speed&quot;, &quot;vertical_speed&quot;)}
+    out[&quot;track&quot;] = interp_angle_deg(t, tp.timestamp, tp.track)
+    out[&quot;valid&quot;] = gap_to_nearest_sample(t, tp.timestamp) &lt;= MAX_GAP_S
+    return t, out
+
+def velocity_segments(t, gs_kt, valid, v_min, v_max):
+    ok = valid &amp; (gs_kt * KT_TO_MS &gt;= v_min) &amp; (gs_kt * KT_TO_MS &lt;= v_max)
+    return runs_of_true(t, ok)                         # list of (t_start, t_end)
+</code></pre>
+<p><strong>Known-time cut.</strong> For the single-event search, keep segments whose delayed CPA falls within the 1 hour window around 8:37 PM UTC [stated 00:23:12] [shown 00:24:58] [inferred M11-I09].</p>
+<h3 id="s2-spectrogram-measurement">S2. Spectrogram measurement</h3>
+<p><strong>Input audio.</strong> The 60:00.000 file has CH 1 and CH 2 [shown 00:01:20]. The sample rate is not shown. The best guess is 16 kHz [inferred M1-I05]. E0 shows in CH 2 views [shown 00:01:57] [inferred M1-I09].</p>
+<p><strong>Display settings for finding curves</strong> [shown 00:01:42]:</p>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Window size</td>
+<td>2048 default, raised to 16384</td>
+</tr>
+<tr>
+<td>Window type</td>
+<td>Hamming</td>
+</tr>
+<tr>
+<td>Zero padding factor</td>
+<td>1</td>
+</tr>
+<tr>
+<td>Frequency scale</td>
+<td>Linear</td>
+</tr>
+<tr>
+<td>Frequency range</td>
+<td>5 to 800 Hz, from a default of 5 to 8000 Hz</td>
+</tr>
+<tr>
+<td>Palette, gain</td>
+<td>Rose, 20 dB, auto brightness off</td>
+</tr>
+</tbody>
+</table>
+<p>The hop is not shown [inferred M1-I06]. At 16 kHz a 16384-sample window spans 1.02 s with 0.98 Hz bins [inferred M1-I07].</p>
+<p><strong>Ideal constant-velocity model.</strong> The Doppler Curve Fit page has four sliders [shown 00:08:57]: <code>f0 (fundamental freq)</code>, <code>v (plane speed)</code>, <code>d (slant distance)</code>, <code>t0 (CPA time)</code>. It prints <code>f_pre (approach)</code>, <code>f_post (recede)</code>, and <code>max RoC</code>. Slider steps are [inferred M5-I15]. The formulas below are [inferred M5-I07] [inferred M5-I08]. A rerun of these formulas reproduced all 13 rows of the M5 readout table, 11 distinct settings, and snapshot C from M7, with a worst error of 0.005. The sign convention matches S5, where v_r is positive when the aircraft recedes.</p>
+<pre><code class="language-python">def ideal_curve(t, f0, v, d, t0, c=343.0):
+    s = v * (t - t0)                     # along-track offset from CPA, m
+    r = np.sqrt(d * d + s * s)           # slant distance, m
+    v_r = v * s / r                      # radial velocity, &gt; 0 receding
+    return f0 * c / (c + v_r)
+
+def readouts(f0, v, d, c=343.0):
+    f_pre = f0 * c / (c - v)             # approach asymptote
+    f_post = f0 * c / (c + v)            # recede asymptote
+    max_roc = f0 * v * v / (c * d)       # abs(df/dt) at CPA, Hz/s
+    return f_pre, f_post, max_roc
+</code></pre>
+<p>Whether the page applies emission time is not shown [inferred M5-I09]. <strong>Take snapshot</strong> logs the current sliders. The log header reads "MIN/MAX auto-calculated, BEST = midpoint" [shown 00:10:18]. Taking a snapshot at each end of the loosest acceptable fit gives the range [inferred M5-I02] [inferred M5-I13]. The fit spectrogram shows 0 to -80 dB [shown 00:08:57]. Its FFT settings are [inferred M5-I14].</p>
+<p><strong>Measurement record.</strong> One record per event feeds S1, S4, and S6.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>E1</th>
+<th>E2</th>
+<th>E0</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Audio CPA time, elapsed</td>
+<td>1:35:52 = 5752 s [shown 00:17:48]</td>
+<td>1:51:13 = 6673 s [shown 00:19:27], fit t0 1:51:12.90 to 1:51:15.90 [shown 00:10:30]</td>
+<td>1:21:16 = 4876 s [shown 00:23:31]</td>
+</tr>
+<tr>
+<td>f0</td>
+<td>112.5 to 113.0 Hz [shown 00:19:15]</td>
+<td>130.0 to 133.5 Hz [shown 00:10:30] [shown 00:18:33]</td>
+<td>cut off on screen [shown 00:23:31]</td>
+</tr>
+<tr>
+<td>Speed range</td>
+<td>130 to 154 m/s [shown 00:10:35]</td>
+<td>88 to 110 m/s [shown 00:10:35]</td>
+<td>not shown [inferred M11-I14]</td>
+</tr>
+<tr>
+<td>CPA slant distance range</td>
+<td>4300 to 7800 m [shown 00:10:35]</td>
+<td>1390 to 4690 m [shown 00:10:35]</td>
+<td>not shown</td>
+</tr>
+<tr>
+<td>Curve in the scoring panel</td>
+<td>about 180 to 82 Hz over 5690 to 5875 s [shown 00:19:27]</td>
+<td>about 178 to 100 Hz over 6630 to 6735 s [shown 00:19:27]</td>
+<td>about 510 to 310 Hz over 4852 to 4910 s [shown 00:23:31]</td>
+</tr>
+<tr>
+<td>Absolute time</td>
+<td>unknown</td>
+<td>unknown</td>
+<td>8:37 PM UTC [stated 00:23:02]</td>
+</tr>
+</tbody>
+</table>
+<p>The E1 to E2 gap used by the filters is 920 s [shown 00:10:35]. The tool labels differ by 921 s [inferred M9-I02].</p>
+<p><strong>Traced line.</strong> E0 is too faint for brightness scoring, so the creator traces it as a line, labelled "traced composite line (LINE_POINTS)" [stated 00:23:34] [shown 00:23:31]. Store it as sorted (elapsed s, Hz) pairs and interpolate linearly [inferred M11-I10]. The project tree holds <code>curve trace v1.py</code> [shown 00:02:08].</p>
+<h3 id="s3-acoustic-geometry-and-propagation">S3. Acoustic geometry and propagation</h3>
+<p><strong>Local frame.</strong> <code>v31.py</code> converts each aircraft state to east, north, and up metres from the candidate with a flat-earth approximation [shown 00:02:08]:</p>
+<pre><code class="language-text">east  = (lon_ac - lon_cand) * 111320 * cos(radians(lat_ac))
+north = (lat_ac - lat_cand) * 111320
+up    = alt_ft * FT_TO_M - elevation(lat_cand, lon_cand)
+dist  = sqrt(east^2 + north^2 + up^2), floored at 1e-6
+</code></pre>
+<p>ADS-B altitude is above sea level [stated 00:06:07], so the DEM supplies the observer height [stated 00:06:18]. How the creator treats barometric altitude is [inferred M3-I21]. Whether the CPA stage used the same flat-earth distance is [inferred M3-I24].</p>
+<p><strong>CPA and delayed CPA.</strong> The creator names these quantities but shows no equations. The forms below are [inferred M3-I11] [inferred M3-I12] [inferred M3-I13] [inferred M3-I19].</p>
+<pre><code class="language-python">def cpa_hit(track1s, cand, c=C_SOUND):
+    dist = slant_distance(track1s, cand)        # flat-earth frame above, vectorised over points
+    k = np.argmin(dist)                         # one global minimum per flight
+    t_cpa = track1s.timestamp[k]
+    return t_cpa, dist[k], t_cpa + dist[k] / c  # CPA time, CPA slant distance, delayed CPA time
+</code></pre>
+<p><strong>Worked example.</strong> Flight 1099966250 flies level at 4600 ft and about 116 kt near 33.13 N, -85.96 [shown 00:05:36]. Grid point fid 43956 shows <code>cpa_distance_m</code> 3364.7698672, <code>ground_elevation_m</code> 257.477575286, and <code>retarded_cpa_time</code> 22:46:46 [shown 00:06:32]. The height difference is 4600 × 0.3048 - 257.48 = 1144.6 m, the horizontal distance 3164 m, and the delay 3364.77 / 343 = 9.81 s [inferred M3-I14]. Two CPA times appear on screen. Section 8 resolves them in favour of 22:46:36 [inferred M3-I17].</p>
+<p><strong>Emission time.</strong> For a reception time t_r, the emission time solves <code>t_r = t_e + r(t_e) / c</code> [shown 00:17:14]. <code>solve_emission_time_vec</code> iterates <code>t_e = t_r - dist(t_e) / C_SOUND</code> six times from <code>t_e = t_r</code> [shown 00:02:08]. The iteration converges because the aircraft moves far slower than sound. The demo rows satisfy the identity to 1 ms: -4.539 + 1557/343 = 0.000, 9.352 + 1937/343 = 14.999, and 16.910 + 2775/343 = 25.000 [inferred M8-I03].</p>
+<p><strong>Wind.</strong> <code>v31.py</code> subtracts a wind vector from the ground velocity before the Doppler step [shown 00:02:08]. <code>compute_wind_vector_for_timestamp</code> reads the nearest observation from <code>fetch_or_load_wind_day(date_str)</code>, converts knots to m/s, and turns the "from" direction into east and north components [shown 00:02:08]:</p>
+<pre><code class="language-python">wind_speed_ms = sknt * KT_TO_MS
+toward_rad = math.radians((drct + 180) % 360)
+east_ms = wind_speed_ms * math.sin(toward_rad)
+north_ms = wind_speed_ms * math.cos(toward_rad)
+</code></pre>
+<p>The video never mentions wind. The data source is [inferred M1-I13].</p>
+<h3 id="s4-candidate-grid-and-constraint-filters">S4. Candidate grid and constraint filters</h3>
+<p><strong>Data shapes.</strong> [inferred M3-I23] [inferred M3-I27] [inferred M4-I03]</p>
+<pre><code class="language-text">GridPoint  ix:int  iy:int  (indices on one shared 200 m lattice)  lat  lon  ground_elevation_m
+CpaHit     flightid  band(0 any prop | 1 green | 2 pink)  t_cpa  d_cpa_m  t_delayed
+Candidate  GridPoint  flight1  t_delayed1  d1  flight2  t_delayed2  d2
+</code></pre>
+<p>The creator stores each point's hits as two comma-separated attribute strings, <code>flight_ids</code> and <code>retarded_cpa_times</code>, paired by position [shown 00:06:58] [inferred M3-I06]. Times past midnight UTC show hours above 24 in the CPA Timeline, such as 26:20:51 [shown 00:07:30] [inferred M4-I10]. Epoch seconds avoid both problems.</p>
+<p><strong>First pass, M3 and M4.</strong> Lay the lattice within 10 km of every track [stated 00:05:12]. Compute a hit for every flight within range of each point. Keep points with a pair 920 ± 5 s apart [stated 00:07:34]. This pass only ran on a test area, about 35,000 points from under 0.05% of US land [stated 00:07:49] [stated 00:07:55].</p>
+<p><strong>Second pass, M6.</strong> Place points only in each event's slant-distance band around its velocity segments [stated 00:10:59]. A horizontal band follows from <code>d_h = sqrt(d_slant^2 - (h_aircraft_msl - h_ground)^2)</code> [inferred M6-I02]. Points stay on the 200 m lattice [inferred M6-I06]. Then run the offset and silence filters [inferred M6-I10]:</p>
+<pre><code class="language-python">def surviving_pairs(green, pink, all_props, gap=920.0, tol=5.0):
+    pink = sorted(pink, key=lambda h: h.t_delayed)
+    times = [h.t_delayed for h in pink]
+    for a in green:                                  # E1 band hits at this point
+        lo = bisect_left(times, a.t_delayed + gap - tol)
+        hi = bisect_right(times, a.t_delayed + gap + tol)
+        for b in pink[lo:hi]:                        # E2 band hits 920 +/- 5 s later
+            if b.flightid != a.flightid and is_silent(all_props, a, b):
+                yield a, b
+
+def is_silent(all_props, a, b):
+    threshold = max(a.d_cpa_m, b.d_cpa_m)            # [shown 00:12:11], no multiplier
+    return not any(h.flightid not in (a.flightid, b.flightid)
+                   and a.t_delayed &lt; h.t_delayed &lt; b.t_delayed
+                   and h.d_cpa_m &lt;= threshold
+                   for h in all_props)
+</code></pre>
+<p>The order is fixed. A point must hear green, then pink 920 s later [stated 00:10:49]. The silence test needs hits from every propeller flight within 7800 m, the largest event distance, and not only hits from the velocity segments [inferred M6-I16]. The window bounds of the silence test are [inferred M6-I18].</p>
+<p><strong>Candidate counts.</strong></p>
+<table>
+<thead>
+<tr>
+<th>Stage</th>
+<th>Area</th>
+<th>Points</th>
+<th>Tag</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>10 km grid, offset filter</td>
+<td>test area</td>
+<td>about 35,000</td>
+<td>[stated 00:07:49]</td>
+</tr>
+<tr>
+<td>Speed and distance bands, offset filter</td>
+<td>continental US</td>
+<td>about 73,000, "roughly 70,000"</td>
+<td>[stated 00:11:10] [stated 00:12:44]</td>
+</tr>
+<tr>
+<td>Plus silence filter</td>
+<td>continental US</td>
+<td>about 15,000</td>
+<td>[stated 00:12:49]</td>
+</tr>
+<tr>
+<td>Densified to 100 m</td>
+<td>survivors</td>
+<td>about 30,000 to 40,000, and 29,245 plotted</td>
+<td>[stated 00:20:44] [shown 00:21:07]</td>
+</tr>
+<tr>
+<td>Flight pairs</td>
+<td>survivors</td>
+<td>195</td>
+<td>[shown 00:21:26]</td>
+</tr>
+<tr>
+<td>Single event at a known time</td>
+<td>continental US</td>
+<td>380,127 points over 253 flights</td>
+<td>[shown 00:23:22] [shown 00:23:26]</td>
+</tr>
+</tbody>
+</table>
+<h3 id="s5-doppler-curve-forward-model">S5. Doppler curve forward model</h3>
+<p><strong>Code shown on screen.</strong> <code>scripts/v31.py</code>, lines 623 to 680 [shown 00:02:08]:</p>
+<pre><code class="language-python">def geometry_and_doppler_vec(state, cand_lat, cand_lon):
+    ac_lat, ac_lon = state[&quot;lat&quot;], state[&quot;lon&quot;]
+    alt_m = state[&quot;alt_ft&quot;] * FT_TO_M
+    gs_ms = state[&quot;gs_kt&quot;] * KT_TO_MS
+    vs_ms = state[&quot;vs_fpm&quot;] * FPM_TO_MS
+    track_deg = state[&quot;track_deg&quot;]
+
+    east_m = (ac_lon - cand_lon) * 111320.0 * np.cos(np.radians(ac_lat))
+    north_m = (ac_lat - cand_lat) * 111320.0
+    up_m = alt_m - get_elevation_scalar(cand_lat, cand_lon)
+    dist = np.sqrt(east_m ** 2 + north_m ** 2 + up_m ** 2)
+    dist = np.where(dist &lt;= 1e-6, 1e-6, dist)
+
+    vx = gs_ms * np.sin(np.radians(track_deg)) - WIND_EAST_MS
+    vy = gs_ms * np.cos(np.radians(track_deg)) - WIND_NORTH_MS
+    vz = vs_ms
+    ux, uy, uz = east_m / dist, north_m / dist, up_m / dist
+    range_rate = vx * ux + vy * uy + vz * uz
+    doppler_factor = C_SOUND / (C_SOUND + range_rate)
+    return dist, doppler_factor
+
+
+def solve_emission_time_vec(track_arrs, cand_lat, cand_lon, t_r_arr, iters=6):
+    t_e = t_r_arr.copy()
+    valid = np.ones(len(t_r_arr), dtype=bool)
+    for _ in range(iters):
+        state = interpolate_state_vec(track_arrs, t_e)
+        valid &amp;= state[&quot;valid&quot;]
+        dist, _ = geometry_and_doppler_vec(state, cand_lat, cand_lon)
+        t_e = t_r_arr - dist / C_SOUND
+    return t_e, valid
+
+
+def solve_doppler_factor(track_arrs, cand_lat, cand_lon, t_recept):
+    t_e, valid = solve_emission_time_vec(track_arrs, cand_lat, cand_lon, t_recept)
+    state = interpolate_state_vec(track_arrs, t_e)
+    valid &amp;= state[&quot;valid&quot;]
+    _, doppler_factor = geometry_and_doppler_vec(state, cand_lat, cand_lon)
+    if valid.sum() &lt; 5:
+        return None, None
+    frame_idx = np.arange(len(t_recept))[valid]
+    return doppler_factor[valid], frame_idx
+
+
+def compute_dense_doppler_curve(track_arrs, cand_lat, cand_lon, frame_centers_s, point_offset,
+                                dt_range, oversample=3):
+</code></pre>
+<p>The unit vector points from the candidate to the aircraft. So <code>range_rate</code> is positive when the aircraft recedes, and <code>f = f0 * doppler_factor</code> [shown 00:02:08] [inferred M7-I09]. Velocity comes from ADS-B ground speed, track, and vertical speed, not from position differences [shown 00:02:08]. The model returns a factor rather than a frequency, so an f0 sweep only rescales one array. The body of <code>compute_dense_doppler_curve</code> is not shown. Its parameter meanings are [inferred D-03].</p>
+<p><strong>Equations shown in the demos</strong> [shown 00:16:07] [shown 00:17:14]:</p>
+<pre><code class="language-text">t_r = t_e + r(t_e) / c
+f(t_r) = f0 * c / (c + v_r(t_e))
+v_r = v . (p_aircraft - p_observer) / |p_aircraft - p_observer|     [inferred M7-I02, M8-I06]
+</code></pre>
+<p><strong>State interpolation.</strong> <code>interpolate_state_vec(track_arrs, t)</code> returns <code>lat</code>, <code>lon</code>, <code>alt_ft</code>, <code>gs_kt</code>, <code>vs_fpm</code>, <code>track_deg</code>, and <code>valid</code> at arbitrary times [shown 00:02:08]. The method is [inferred M7-I01] [inferred M8-I10]:</p>
+<pre><code class="language-python">def interpolate_state_vec(arrs, t):
+    ts = arrs[&quot;timestamp&quot;]
+    i = np.clip(np.searchsorted(ts, t) - 1, 0, len(ts) - 2)
+    w = (t - ts[i]) / (ts[i + 1] - ts[i])
+    out = {k: arrs[k][i] * (1 - w) + arrs[k][i + 1] * w
+           for k in (&quot;lat&quot;, &quot;lon&quot;, &quot;alt_ft&quot;, &quot;gs_kt&quot;, &quot;vs_fpm&quot;)}
+    turn = (arrs[&quot;track_deg&quot;][i + 1] - arrs[&quot;track_deg&quot;][i] + 180) % 360 - 180
+    out[&quot;track_deg&quot;] = (arrs[&quot;track_deg&quot;][i] + w * turn) % 360
+    out[&quot;valid&quot;] = (t &gt;= ts[0]) &amp; (t &lt;= ts[-1]) &amp; arrs[&quot;valid&quot;][i] &amp; arrs[&quot;valid&quot;][i + 1]
+    return out
+</code></pre>
+<p><strong>Test values from the step-by-step demo.</strong> Speed 140 m/s, CPA distance 980 m, altitude 1020 m, f0 130 Hz, c 343 m/s, velocity (140.0, 16.8, 0.0) m/s [shown 00:16:45]. The demo geometry does not close exactly, so test the identities rather than the positions [inferred M7-I05].</p>
+<table>
+<thead>
+<tr>
+<th>t_r (s)</th>
+<th>Mode</th>
+<th>t_e (s)</th>
+<th>r (m)</th>
+<th>v_r (m/s)</th>
+<th>f (Hz)</th>
+<th>Tag</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0.00</td>
+<td>naive</td>
+<td>0.00</td>
+<td>1419</td>
+<td>0.00</td>
+<td>130.00</td>
+<td>[shown 00:17:00]</td>
+</tr>
+<tr>
+<td>5.00</td>
+<td>naive</td>
+<td>5.00</td>
+<td>1585</td>
+<td>62.73</td>
+<td>109.90</td>
+<td>[shown 00:16:34]</td>
+</tr>
+<tr>
+<td>25.00</td>
+<td>naive</td>
+<td>25.00</td>
+<td>3800</td>
+<td>130.80</td>
+<td>94.11</td>
+<td>[shown 00:16:45]</td>
+</tr>
+<tr>
+<td>0.00</td>
+<td>emission</td>
+<td>-4.539</td>
+<td>1557</td>
+<td>-57.97</td>
+<td>156.44</td>
+<td>[shown 00:17:21]</td>
+</tr>
+<tr>
+<td>15.00</td>
+<td>emission</td>
+<td>9.352</td>
+<td>1937</td>
+<td>95.97</td>
+<td>101.58</td>
+<td>[shown 00:17:24]</td>
+</tr>
+<tr>
+<td>25.00</td>
+<td>emission</td>
+<td>16.910</td>
+<td>2775</td>
+<td>121.16</td>
+<td>96.07</td>
+<td>[shown 00:17:25]</td>
+</tr>
+</tbody>
+</table>
+<h3 id="s6-spectrogram-scoring-and-ranking">S6. Spectrogram scoring and ranking</h3>
+<p><strong>Spectrogram.</strong> Scoring panels plot elapsed recording time against frequency, with brightness in dB, such as -39.7 [shown 00:19:27]. The E1 panel spans 5690 to 5875 s and about 70 to 195 Hz. The E2 panel spans about 6630 to 6735 s and 90 to 195 Hz [shown 00:19:27]. FFT settings are [inferred M9-I14]. Score normalisation is [inferred M9-I13].</p>
+<p><strong>Placement.</strong> Each candidate has a delayed CPA from geometry for each flight, T1 and T2 in UTC. E1's measured audio CPA time is A1 = 5752 s. The mapping from UTC to audio time is <code>a = A1 + (t - T1) + dt</code> for both events, with one shared <code>dt</code> [stated 00:19:04] [shown 00:19:27]. E2 therefore lands at <code>A1 + (T2 - T1) + dt</code>, and only geometry decides its offset from E1.</p>
+<p><strong>Locked two-event score.</strong> The structure follows the narration [stated 00:19:12] [stated 00:19:30] [stated 00:20:00]. Sampling, normalisation, and sweep ranges are [inferred M9-I04] [inferred M9-I05] [inferred M9-I06] [inferred M9-I10] [inferred M9-I11] [inferred M9-I12] [inferred M9-I13]. Scored windows are [inferred D-04].</p>
+<pre><code class="language-python">DT = np.arange(-3.0, 3.0001, 0.05)       # s, shared clock-anchor offset
+DF0 = np.arange(-2.0, 2.0001, 0.5)       # Hz, around each event's measured f0
+
+def brightness(Z, spec, a, f):          # Z: dB or z-scored dB, cropped to one event window
+    i = np.rint((a - spec.t_first) / spec.frame_step).astype(int)
+    j = np.rint((f - spec.f_first) / spec.bin_step).astype(int)
+    ok = (i &gt;= 0) &amp; (i &lt; Z.shape[1]) &amp; (j &gt;= 0) &amp; (j &lt; Z.shape[0])
+    return Z[j[ok], i[ok]].sum() / max(ok.sum(), 1)
+
+def model_audio(F, P, T1, A1, window, step):
+    lo, hi = window
+    t = T1 + np.arange(lo - A1 - DT.max(), hi - A1 - DT.min(), step)   # UTC reception times
+    k, idx = solve_doppler_factor(F.arrs, P.lat, P.lon, t)
+    return A1 + (t[idx] - T1), k                                          # audio time before dt, factor
+
+def score_pair(P, F1, F2, E1, E2, Z1, Z2, spec1, spec2, step):
+    T1 = delayed_cpa(F1, P)
+    a1, k1 = model_audio(F1, P, T1, E1.A, E1.window, step)
+    a2, k2 = model_audio(F2, P, T1, E1.A, E2.window, step)
+    s1, dt_best = max((brightness(Z1, spec1, a1 + dt, (E1.f0 + df) * k1), dt)
+                      for dt in DT for df in DF0)
+    s2 = max(brightness(Z2, spec2, a2 + dt_best, (E2.f0 + df) * k2) for df in DF0)
+    return s1, s2, s1 + s2               # score_1, score_2, match_score
+</code></pre>
+<p>The video says the score sums brightness [stated 00:18:22]. The pseudocode divides by the number of bins scored, the breakdown's guess for why good scores sit near 10 [inferred M9-I13]. E1 is scored in isolation and E2 is locked to E1's best <code>dt</code> [shown 00:21:07]. The function in the creator's code is <code>curve_match_scores_locked_spectrogram</code> in <code>1_2b_v7.py</code> [shown 00:21:07]. <code>match_score = score_1 + score_2</code> [shown 00:21:39].</p>
+<p><strong>Densify to 100 m.</strong> On the 200 m grid the true point can sit up to 141 m, half a cell diagonal, from the nearest grid point [stated 00:20:22] [inferred M9-I07]. Survivors are resampled to 100 m and rescored [stated 00:20:27]. Four points per cell would give about 60,000, not the stated 30,000 to 40,000, so the exact construction is open [inferred M9-I16]. New points need fresh S3 and S5 runs [inferred M9-I03].</p>
+<p><strong>Ranking.</strong> Group by flight pair, keep the best point by <code>match_score</code>, and sort [shown 00:21:29]:</p>
+<pre><code class="language-python">best = (scores.sort(&quot;match_score&quot;, descending=True)
+              .group_by([&quot;flight1&quot;, &quot;flight2&quot;], maintain_order=True).first()
+              .sort(&quot;match_score&quot;, descending=True))
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Rank</th>
+<th>flight1</th>
+<th>flight2</th>
+<th>lat, lon</th>
+<th>combined</th>
+<th>E1</th>
+<th>E2</th>
+<th>Tag</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>1100069709</td>
+<td>1100048665</td>
+<td>40.876466, -73.524951</td>
+<td>20.48</td>
+<td>10.64</td>
+<td>9.84</td>
+<td>[shown 00:21:42]</td>
+</tr>
+<tr>
+<td>2</td>
+<td>1100088546</td>
+<td>1100072793</td>
+<td>45.699498, -73.643756</td>
+<td>15.25</td>
+<td>9.52</td>
+<td>5.73</td>
+<td>[shown 00:21:54]</td>
+</tr>
+<tr>
+<td>3</td>
+<td>1100029918</td>
+<td>1100060374</td>
+<td>36.454080, -94.456016</td>
+<td>15.04</td>
+<td>7.90</td>
+<td>7.14</td>
+<td>[shown 00:22:15], E2 [inferred M10-I03]</td>
+</tr>
+<tr>
+<td>4</td>
+<td>1100065108</td>
+<td>1100061857</td>
+<td>42.012829, -81.426671</td>
+<td>14.87</td>
+<td>8.33</td>
+<td>6.54</td>
+<td>[shown 00:22:19]</td>
+</tr>
+<tr>
+<td>5</td>
+<td>1100069287</td>
+<td>1100070751</td>
+<td>43.437551, -79.358276</td>
+<td>14.85</td>
+<td>5.75</td>
+<td>9.10</td>
+<td>[shown 00:22:20], E2 [inferred M10-I04]</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Fine rerun.</strong> With the winning flights known, the creator rescores at much finer resolution for those flights only and draws heat maps for E1, E2, and both [stated 00:22:26]. Spacing and extent are [inferred M10-I12]. The combined map is [inferred M10-I14].</p>
+<p><strong>Single-event line score.</strong> The score is negative and the best is closest to zero. The top point scores -1.74 and the worst -137.78 [shown 00:23:22]. The metric is [inferred M11-I06] [inferred M11-I11]:</p>
+<pre><code class="language-python">def line_score(P, F, E0, line, step):
+    T = delayed_cpa(F, P)
+    a, k = model_audio(F, P, T, E0.A, (line.t[0], line.t[-1]), step)
+    best = -np.inf
+    for dt in DT:
+        f_line = np.interp(a + dt, line.t, line.f, left=np.nan, right=np.nan)
+        for df in DF0:
+            best = max(best, -np.nanmean(np.abs((E0.f0 + df) * k - f_line)))
+    return best
+</code></pre>
+<p>Each top-8 panel prints a per-flight <code>dt</code> between +0.15 and +0.50 s, so the offset sweep stays in this mode [shown 00:23:31] [inferred M11-I05].</p>
+<h3 id="s7-map-review-and-ground-truth">S7. Map review and ground truth</h3>
+<p><strong>QGIS project.</strong> Layers include <code>dem_mosaic_1km</code>, <code>all_flight_paths</code>, <code>prop_flight_paths</code>, <code>single ev</code>, <code>post offset pre sil...</code>, <code>post silence + offs...</code>, <code>13552_candidat...</code>, <code>15113_candidate_...</code>, <code>data error</code>, <code>test area</code>, <code>flightpaths</code>, <code>event scores</code> with <code>va_locked_con...</code> and <code>va_phase1_eve...</code>, <code>1:35:52_candidat...</code>, <code>1:21:20_candidat...</code>, and basemaps <code>google</code>, <code>carto</code>, <code>bing</code> [shown 00:02:09] [shown 00:25:24]. The map CRS is EPSG:3857 [inferred M3-I07]. Layer files are GeoPackage, matching the <code>gpkg</code> script names [inferred M6-I23].</p>
+<p><strong>Heat maps.</strong> Fine-resolution rasters of about 128 by 128 screen pixels, coloured dark blue through green and yellow to dark red [shown 00:22:32]. Each single-event map is a diagonal ridge at the right slant distance from that flight. The ridges cross at the combined peak [inferred M10-I06].</p>
+<p><strong>Ground truth procedure.</strong></p>
+<ol>
+<li>Zoom to the centre of the combined heat map. If it sits in water, move to the nearest bank [stated 00:25:20].</li>
+<li>Right-click, choose <strong>Copy Coordinate</strong>, and pick EPSG:4326 [shown 00:25:27].</li>
+<li>Paste the coordinate into Google and open Google Maps [shown 00:25:28].</li>
+<li>Enter Street View nearby and pan across the water [shown 00:25:42].</li>
+<li>Reject views without the V-shaped tree, or with the V the wrong way. The match is a V followed by a point and a rounded part, "up and to the right" [stated 00:25:37] [stated 00:25:49].</li>
+<li>Tilt up the utility pole to find the camera [stated 00:26:04].</li>
+</ol>
+<p><strong>Coordinates.</strong></p>
+<table>
+<thead>
+<tr>
+<th>Point</th>
+<th>lat, lon</th>
+<th>Distance to final</th>
+<th>Tag</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Final, from heat-map centre moved to the bank</td>
+<td>40.8767282, -73.5264340</td>
+<td>0 m</td>
+<td>[shown 00:25:27]</td>
+</tr>
+<tr>
+<td>Two-event leader, 100 m grid</td>
+<td>40.876466, -73.524951</td>
+<td>128 m</td>
+<td>[shown 00:21:42], distance [inferred M11-I03]</td>
+</tr>
+<tr>
+<td>Single-event leader</td>
+<td>40.877922, -73.531941</td>
+<td>482 m</td>
+<td>[shown 00:23:31], distance [inferred M11-I03]</td>
+</tr>
+<tr>
+<td>Google Maps plus code</td>
+<td>VFGF+MCW Oyster Bay, New York</td>
+<td></td>
+<td>[shown 00:25:30]</td>
+</tr>
+</tbody>
+</table>
+<h3 id="s8-countermeasure-tests">S8. Countermeasure tests</h3>
+<p>Each test applies one countermeasure to audio holding a known curve, then looks for the curve in a spectrogram [shown 00:26:28].</p>
+<table>
+<thead>
+<tr>
+<th>Test</th>
+<th>Setup</th>
+<th>Result</th>
+<th>Tag</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>High-pass filter</td>
+<td>Audacity High-Pass Filter on track "audio", cutoff not shown. Everything below about 400 to 460 Hz greys out.</td>
+<td>Curves gone from view [shown 00:26:34], cutoff [inferred M12-I07]</td>
+<td>[shown]</td>
+</tr>
+<tr>
+<td>MP3 export</td>
+<td>Export and reopen as "audio3", band below about 400 Hz black</td>
+<td>Curve looks gone</td>
+<td>[shown 00:26:37]</td>
+</tr>
+<tr>
+<td>Amplify</td>
+<td><strong>Amplify</strong> on the MP3, gain not shown</td>
+<td>Diagonal curves return at about 140 to 370 Hz. Fails as a defence.</td>
+<td>[shown 00:26:42], gain [inferred M12-I08]</td>
+</tr>
+<tr>
+<td>Masking</td>
+<td>JBL speaker across the room plays a curve under the last 15 s of narration</td>
+<td>Straight line from about 100 Hz at 10 s to 60 Hz at 29 s under speech harmonics. Fails as a defence.</td>
+<td>[stated 00:26:54] [shown 00:26:58]</td>
+</tr>
+<tr>
+<td>Phone call</td>
+<td>JBL plays a curve into the sending phone. The receiving phone is in another room under Squishmallows, recorded by a mic. The sender mutes.</td>
+<td>Curve from about 200 to 175 Hz survives echo cancellation, noise gating, voice detection, and compression. A gap appears.</td>
+<td>[shown 00:27:53], gap cause [inferred M12-I11]</td>
+</tr>
+<tr>
+<td>Cuts</td>
+<td>Not performed on screen</td>
+<td>Break the 920 s offset. One known-time minute can still work.</td>
+<td>[stated 00:27:06] [stated 00:27:11]</td>
+</tr>
+</tbody>
+</table>
+<p>The closing list strikes out "High pass filter" and "Drown out with louder sounds" and leaves "Compression / lossy recording" [shown 00:27:59]. The suggested measures are cuts and extra noise cancellation [stated 00:28:04].</p>
+<h2 id="7-lessons-from-the-video">7. Lessons from the video</h2>
+<table>
+<thead>
+<tr>
+<th>Problem</th>
+<th>Resolution</th>
+<th>Time</th>
+<th>Tag</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>The aircraft is inaudible and invisible in the waveform.</td>
+<td>Open a spectrogram, cut the band to 5 to 800 Hz, and raise the FFT window to 16384.</td>
+<td>00:01:14 to 00:01:45</td>
+<td>[stated] [shown]</td>
+</tr>
+<tr>
+<td>A box query can hit the FR24 flight cap.</td>
+<td>Split the box north and south and recurse.</td>
+<td>00:03:09</td>
+<td>[shown]</td>
+</tr>
+<tr>
+<td>FR24 numeric flight IDs are recycled across flights.</td>
+<td>Key the done-log on (<code>flightid</code>, <code>target_ts</code>).</td>
+<td>00:03:11</td>
+<td>[shown]</td>
+</tr>
+<tr>
+<td>Trail column names vary.</td>
+<td>Map them to one schema in <code>standardize_rows</code>.</td>
+<td>00:03:13</td>
+<td>[shown]</td>
+</tr>
+<tr>
+<td>Type codes do not say propeller or jet, and the ICAO lookup has gaps.</td>
+<td>Remove known jets instead of keeping known propellers.</td>
+<td>00:03:55 to 00:04:05</td>
+<td>[stated]</td>
+</tr>
+<tr>
+<td>Hearing a plane lasts almost two minutes.</td>
+<td>Use the CPA time as the event time.</td>
+<td>00:04:51 to 00:05:07</td>
+<td>[stated]</td>
+</tr>
+<tr>
+<td>Sound takes seconds to arrive, slant distance exceeds horizontal distance, and ADS-B altitude is above sea level.</td>
+<td>Use the delayed CPA time from the 3D slant distance and DEM ground elevation.</td>
+<td>00:05:38 to 00:06:18</td>
+<td>[stated]</td>
+</tr>
+<tr>
+<td>Where a curve's centre sits is a judgement.</td>
+<td>Allow about ±5 s on the 920 s offset.</td>
+<td>00:07:34</td>
+<td>[stated]</td>
+</tr>
+<tr>
+<td>The offset filter alone leaves about 35,000 points in under 0.05% of the US.</td>
+<td>Add speed and slant-distance constraints from the curves.</td>
+<td>00:07:49 to 00:08:21</td>
+<td>[stated]</td>
+</tr>
+<tr>
+<td>The approaching side does not fit an ideal curve, and speed is imprecise.</td>
+<td>Record generous ranges, not single values.</td>
+<td>00:09:51 to 00:10:06</td>
+<td>[stated]</td>
+</tr>
+<tr>
+<td>CPA time and f0 trade off by a second or two and a couple of Hz.</td>
+<td>Carry the uncertainty into the scoring sweep.</td>
+<td>00:10:16 to 00:10:31</td>
+<td>[stated]</td>
+</tr>
+<tr>
+<td>About 73,000 points pass, clustered at airports.</td>
+<td>Use the 15 silent minutes. Set the hearing distance to the farther event's CPA with no multiplier, so the true point is not lost.</td>
+<td>00:11:26 to 00:12:49</td>
+<td>[stated] [shown]</td>
+</tr>
+<tr>
+<td>15,000 points remain and the picture has nothing more to give.</td>
+<td>Model each candidate's exact curve.</td>
+<td>00:12:58 to 00:13:35</td>
+<td>[stated]</td>
+</tr>
+<tr>
+<td>Speed, heading, and altitude changes can produce the same curve variation, so the spectrogram cannot be inverted.</td>
+<td>Forward-model each candidate from real tracks and look for the match.</td>
+<td>00:14:23 to 00:14:46</td>
+<td>[stated]</td>
+</tr>
+<tr>
+<td>Using the velocity at hearing time gives the wrong curve, and a time shift does not fix the shape.</td>
+<td>Solve for the emission time at every step.</td>
+<td>00:16:43 to 00:17:43</td>
+<td>[stated] [shown]</td>
+</tr>
+<tr>
+<td>Correcting E2's timing on its own would hide a wrong candidate.</td>
+<td>Lock E2's offset to the geometry and sweep only its f0.</td>
+<td>00:19:28 to 00:20:00</td>
+<td>[stated]</td>
+</tr>
+<tr>
+<td>The 200 m grid is too coarse for scoring this sharp.</td>
+<td>Densify survivors to 100 m.</td>
+<td>00:20:10 to 00:20:27</td>
+<td>[stated]</td>
+</tr>
+<tr>
+<td>Scoring is expensive.</td>
+<td>Rely on the earlier filters to cut the candidate set.</td>
+<td>00:20:44</td>
+<td>[stated]</td>
+</tr>
+<tr>
+<td>No single point stands out in the raw score cloud.</td>
+<td>Keep the best point per flight pair.</td>
+<td>00:21:14 to 00:21:32</td>
+<td>[stated]</td>
+</tr>
+<tr>
+<td>A high E1 score alone misleads. Pair 2 scores 9.52 on E1 but 5.73 on E2.</td>
+<td>Rank by the combined locked score.</td>
+<td>00:22:01 to 00:22:11</td>
+<td>[stated] [shown]</td>
+</tr>
+<tr>
+<td>E0 is too faint for brightness scoring.</td>
+<td>Trace it as a line and score by closeness to the line.</td>
+<td>00:23:34</td>
+<td>[stated]</td>
+</tr>
+<tr>
+<td>The heat-map centre sits in water.</td>
+<td>Take a point on the nearest bank.</td>
+<td>00:25:20</td>
+<td>[stated]</td>
+</tr>
+<tr>
+<td>The source tree line is heavily pixelated.</td>
+<td>Match the shape and its direction, not detail.</td>
+<td>00:25:31 to 00:25:54</td>
+<td>[stated]</td>
+</tr>
+<tr>
+<td>High-pass filtering and masking seem like defences.</td>
+<td>Both fail. A gain boost or a spectrogram recovers the curve.</td>
+<td>00:26:13 to 00:27:01</td>
+<td>[stated] [shown]</td>
+</tr>
+<tr>
+<td>Phone-call processing seems like a defence.</td>
+<td>It fails. Calls also give a known time.</td>
+<td>00:27:22 to 00:27:52</td>
+<td>[stated] [shown]</td>
+</tr>
+</tbody>
+</table>
+<h2 id="8-open-questions-and-assumptions">8. Open questions and assumptions</h2>
+<p>Every best guess below is [inferred]. Ids M#-I## come from the breakdowns. Ids D-## are inferences this document adds. Merged duplicates list all their ids in one row. Rows that reconcile conflicts between breakdowns give both values with their sources. Confidence is the breakdown's own where it gave one. Where a breakdown gave none, this document assigns one. The arithmetic checks were rerun with a short script for this document.</p>
+<h3 id="s1-ads-b-ingest-and-aircraft-filtering_1">S1. ADS-B ingest and aircraft filtering</h3>
+<table>
+<thead>
+<tr>
+<th>Ids</th>
+<th>Question</th>
+<th>Best guess</th>
+<th>Confidence</th>
+<th>Source</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>M2-I04</td>
+<td>Which <code>pyfr24</code> calls, authentication, and FR24 access tier produced the trails?</td>
+<td>The <code>pyfr24</code> FR24 API client with an API token, since historical trails need API access. This sits uneasily with "did not use the paid API" [stated 00:02:57].</td>
+<td>low</td>
+<td><a href="../03_breakdowns/M2/breakdown.md">M2</a></td>
+</tr>
+<tr>
+<td>M2-I05</td>
+<td>Values of <code>BBOX_TARGET</code>, <code>FLIGHT_LIMIT</code>, <code>MINUTES_BETWEEN_SNAPSHOTS</code>, <code>SWEEP_START_LOCAL</code>, <code>SWEEP_END_LOCAL</code>.</td>
+<td>A box of about 24 to 50 N and -125 to -66, snapshots every 5 to 15 min, sweep over the local day of September 8.</td>
+<td>low</td>
+<td><a href="../03_breakdowns/M2/breakdown.md">M2</a></td>
+</tr>
+<tr>
+<td>M2-I06</td>
+<td><code>Phase1RateLimiter</code> settings.</td>
+<td>A fixed delay of about 1 s per request.</td>
+<td>low</td>
+<td><a href="../03_breakdowns/M2/breakdown.md">M2</a></td>
+</tr>
+<tr>
+<td>M2-I07</td>
+<td>How the ICAO table was exported and joined.</td>
+<td>Scraped or downloaded as CSV, joined on <code>typecode</code> = Type Designator, Engine Type "Jet" dropped.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M2/breakdown.md">M2</a></td>
+</tr>
+<tr>
+<td>M2-I08</td>
+<td>Do turboprops and helicopters count as propeller?</td>
+<td>Only "Jet" was removed, so turboprops and helicopters stay.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M2/breakdown.md">M2</a></td>
+</tr>
+<tr>
+<td>M2-I01</td>
+<td>Units of <code>first_seen_utc</code> and <code>last_seen_utc</code>.</td>
+<td>Unix seconds. The display 1.789E+09 rounds to within about ±6 days of 2026-09-10, which covers September 8.</td>
+<td>high</td>
+<td><a href="../03_breakdowns/M2/breakdown.md">M2</a></td>
+</tr>
+<tr>
+<td>M2-I02</td>
+<td>Unit of <code>max_alt</code>.</td>
+<td>Feet, given values such as 34000 and 43000 for airliners.</td>
+<td>high</td>
+<td><a href="../03_breakdowns/M2/breakdown.md">M2</a></td>
+</tr>
+<tr>
+<td>M2-I03</td>
+<td>Which systems consume S1 output?</td>
+<td>S3 for CPA and slant distance, S4 for laying the grid, S5 for interpolated states.</td>
+<td>high</td>
+<td><a href="../03_breakdowns/M2/breakdown.md">M2</a></td>
+</tr>
+<tr>
+<td>M2-I10</td>
+<td>Trail time resolution and altitude reference.</td>
+<td>FR24 trail points every few seconds to about a minute, altitude in barometric feet.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M2/breakdown.md">M2</a></td>
+</tr>
+<tr>
+<td>M2-I11</td>
+<td>Storage format.</td>
+<td>CSV first, as the code writes, converted to Parquet later for the 50 GB set.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M2/breakdown.md">M2</a></td>
+</tr>
+<tr>
+<td>M2-I13</td>
+<td>The sample coordinates in <code>flight_ids_airborne</code> cluster near 40.4 N, -75.7. Is the sheet a subset?</td>
+<td>It may be a test subset, not the full US set.</td>
+<td>low</td>
+<td><a href="../03_breakdowns/M2/breakdown.md">M2</a></td>
+</tr>
+<tr>
+<td>M3-I02</td>
+<td>Date of the ADS-B example.</td>
+<td>Epoch 1788907594 converts to 2026-09-08 22:46:34 UTC, matching the shown <code>utc_time</code>.</td>
+<td>high</td>
+<td><a href="../03_breakdowns/M3/breakdown.md">M3</a></td>
+</tr>
+<tr>
+<td>M3-I03</td>
+<td>Is <code>track_1sec</code> a 1 s resampling?</td>
+<td>Yes, an interpolation of the raw trail to 1 s, given the layer name and consecutive 1 s points.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M3/breakdown.md">M3</a></td>
+</tr>
+<tr>
+<td>M6-I01, M6-I12</td>
+<td>Speed source and segment definition.</td>
+<td>ADS-B ground speed per point. A segment is a run of consecutive in-range points.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M6/breakdown.md">M6</a></td>
+</tr>
+<tr>
+<td>M10-I18</td>
+<td>What is the flight ID scheme, as in 1100069709?</td>
+<td>An internal per-flight ID from FR24, not an ICAO hex code. The Phase 2 docstring says these IDs are recycled [shown 00:03:11].</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M10/breakdown.md">M10</a></td>
+</tr>
+<tr>
+<td>M11-I09</td>
+<td>Width and centring of the time window around 8:37 PM UTC.</td>
+<td>±30 min on delay-corrected segment times. The slide says "1 hour" [shown 00:24:58].</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M11/breakdown.md">M11</a></td>
+</tr>
+<tr>
+<td>M11-I14</td>
+<td>Velocity bounds for the single-event search.</td>
+<td>The breakdown guesses a reuse of the two-event "event 1" bounds, confidence high. D-01 shows that E0 is a different curve from E1, and the creator says "do the same spectrogram measurement" [stated 00:23:09]. A fresh measurement on E0 is more likely.</td>
+<td>low for reuse</td>
+<td><a href="../03_breakdowns/M11/breakdown.md">M11</a></td>
+</tr>
+</tbody>
+</table>
+<h3 id="s2-spectrogram-measurement_1">S2. Spectrogram measurement</h3>
+<table>
+<thead>
+<tr>
+<th>Ids</th>
+<th>Question</th>
+<th>Best guess</th>
+<th>Confidence</th>
+<th>Source</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>D-01, M5-I11, M1-I12</td>
+<td>Which curves are event 1 and event 2? Conflict. M1 calls the faint curve at file time about 1260 to 1295 s "event 1" and the louder curve at about 2100 to 2180 s "event 2" [shown 00:01:52] [shown 00:02:31]. M5 and M7 call the fit-tool demo at 01:50:30 to 01:52:15 "event 1" [shown 00:08:57]. The scoring tools label event1 1:35:52 and event2 1:51:13 [shown 00:19:27].</td>
+<td>The scoring labels are right. With elapsed time = file time + 3600 s (file <code>..._60to120min</code> [shown 00:03:55]), E1 = 1:35:52 is the louder curve at file time 2152 s, and E2 = 1:51:13 is M1's "possible third curve" at file time 3073 s, inside the 3035 to 3117 s selection [shown 00:02:34]. The 920 s diagram puts its two planes at those times [shown 00:10:35]. The fit-tool demo is E2. Its values, 100 to 117 m/s and 2955 to 4295 m, overlap E2's range and not E1's. The M1 "third curve" was not dropped. It is E2. M5-I11's own guess was "the demo is event 2", low.</td>
+<td>high</td>
+<td><a href="../03_breakdowns/M1/breakdown.md">M1</a>, <a href="../03_breakdowns/M5/breakdown.md">M5</a>, <a href="../03_breakdowns/M9/breakdown.md">M9</a></td>
+</tr>
+<tr>
+<td>M1-I01, M9-I02, M10-I01, M10-I02, M11-I01</td>
+<td>Gap between the events. Conflict. M1 reads about 880 s between visible centres [shown 00:02:31]. The project uses 920 s [shown 00:02:56]. The tool labels give 1:51:13 - 1:35:52 = 921 s.</td>
+<td>The labels are CPA times in the recording. M1's 880 s is E0 to E1 (1:21:16 to 1:35:52 = 876 s), not the pair used. E1 to E2 is 921 s by label and 920 s in the filter. 1:21:16 = 4876 s lies inside E0's plotted window of 4850 to 4910 s.</td>
+<td>high</td>
+<td><a href="../03_breakdowns/M1/breakdown.md">M1</a>, <a href="../03_breakdowns/M9/breakdown.md">M9</a>, <a href="../03_breakdowns/M10/breakdown.md">M10</a>, <a href="../03_breakdowns/M11/breakdown.md">M11</a></td>
+</tr>
+<tr>
+<td>M5-I12, M11-I08</td>
+<td>Time bases differ. Conflict. The spectrogram app shows seconds in a 60:00 file. The fit and scoring tools show 5690 to 6760 s and 01:50:30 to 01:52:15. M11's app frame puts a faint curve near 955 s [shown 00:23:06], while the E0 panel spans 4850 to 4910 s [shown 00:23:31].</td>
+<td>The tools use elapsed time from the start of the full recording, and the app shows the 60 to 120 min chunk, so elapsed = file time + 3600 s. That fits E0, E1, and E2 (1276, 2152, and 3073 s). It does not explain M11's 955 s frame, where the curve falls from about 650 to 450 Hz. That frame may show a different curve or chunk.</td>
+<td>high for the offset per D-01, though both breakdowns rated it low, and low for the 955 s frame</td>
+<td><a href="../03_breakdowns/M5/breakdown.md">M5</a>, <a href="../03_breakdowns/M11/breakdown.md">M11</a></td>
+</tr>
+<tr>
+<td>M2-I09, D-02</td>
+<td>Recording date and time. Conflict. The filename says <code>20260913T191804Z</code> [shown 00:03:55]. The video says "Filmed 9/8/26" [shown 00:00:27], and the ADS-B example converts to September 8. Adding E0's 1:21:16 to 19:18:04 gives 20:39:20 UTC. The creator gives 8:37 PM UTC for E0 [stated 00:23:02].</td>
+<td>The filename timestamp is an export or download time, not the recording start (M2-I09). The 2 min 20 s mismatch with 8:37 PM is unexplained (D-02).</td>
+<td>medium (M2-I09), low (D-02)</td>
+<td><a href="../03_breakdowns/M2/breakdown.md">M2</a>, <a href="../03_breakdowns/M11/breakdown.md">M11</a></td>
+</tr>
+<tr>
+<td>M1-I02</td>
+<td>Do event times feed S4 and S6?</td>
+<td>Yes. The 920 s spacing feeds the S4 offset filter and the audio CPA times anchor S6 scoring.</td>
+<td>high</td>
+<td><a href="../03_breakdowns/M1/breakdown.md">M1</a></td>
+</tr>
+<tr>
+<td>M1-I05</td>
+<td>Sample rate.</td>
+<td>16 kHz, since the default maximum is 8000 Hz with "Max follows Nyquist" off.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M1/breakdown.md">M1</a></td>
+</tr>
+<tr>
+<td>M1-I06</td>
+<td>FFT hop or overlap.</td>
+<td>75% overlap.</td>
+<td>low</td>
+<td><a href="../03_breakdowns/M1/breakdown.md">M1</a></td>
+</tr>
+<tr>
+<td>M1-I07</td>
+<td>Frequency resolution at window 16384.</td>
+<td>0.98 Hz bins over 1.02 s, if the rate is 16 kHz.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M1/breakdown.md">M1</a></td>
+</tr>
+<tr>
+<td>M1-I09</td>
+<td>Which channel to use.</td>
+<td>Either. E0 shows in CH 2 views.</td>
+<td>low</td>
+<td><a href="../03_breakdowns/M1/breakdown.md">M1</a></td>
+</tr>
+<tr>
+<td>M1-I10</td>
+<td>Recording start time of day.</td>
+<td>Unknown at this stage. The two-event search does not need it.</td>
+<td>high</td>
+<td><a href="../03_breakdowns/M1/breakdown.md">M1</a></td>
+</tr>
+<tr>
+<td>M1-I11</td>
+<td>Accuracy of event centres and frequencies read off axis ticks.</td>
+<td>Off by up to about 5 s and 20 Hz.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M1/breakdown.md">M1</a></td>
+</tr>
+<tr>
+<td>M1-I03, M1-I08, M3-I15</td>
+<td>What is the spectrogram viewer?</td>
+<td>A custom web or Electron tool built with Claude Code, given the status-bar label. Any viewer with a 5 to 800 Hz band and a 16384 window works.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M1/breakdown.md">M1</a>, <a href="../03_breakdowns/M3/breakdown.md">M3</a></td>
+</tr>
+<tr>
+<td>M2-I12</td>
+<td>How the boosted-frequency playback was made.</td>
+<td>An Audacity EQ or band boost around 100 to 400 Hz plus gain.</td>
+<td>low</td>
+<td><a href="../03_breakdowns/M2/breakdown.md">M2</a></td>
+</tr>
+<tr>
+<td>M4-I09</td>
+<td>How the 920 s offset was measured.</td>
+<td>The difference of fitted CPA times from the S2 fits.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M4/breakdown.md">M4</a></td>
+</tr>
+<tr>
+<td>M5-I01</td>
+<td>Comparison-clip frequencies.</td>
+<td>Read off the bracket positions against the axis, about 60 Hz drop for clip 1 and about 720 to 470 Hz for clip 2.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M5/breakdown.md">M5</a></td>
+</tr>
+<tr>
+<td>M5-I02, M5-I13</td>
+<td>How the ranges are set.</td>
+<td>Snapshot the loosest acceptable fit at each end. The tool takes MIN and MAX of the snapshots, with BEST as the midpoint.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M5/breakdown.md">M5</a></td>
+</tr>
+<tr>
+<td>M5-I03</td>
+<td>Unit of the fit tool's x axis.</td>
+<td>Seconds from the start of the full recording. The hover 6679.8 equals 1:51:19.8, consistent with D-01.</td>
+<td>high</td>
+<td><a href="../03_breakdowns/M5/breakdown.md">M5</a></td>
+</tr>
+<tr>
+<td>M5-I06</td>
+<td>Which later system uses the approach-side misfit?</td>
+<td>S5. M7 replays the imperfect fit at 00:13:46 and gives heading, speed, and altitude changes as the cause, which motivates forward modelling.</td>
+<td>high</td>
+<td><a href="../03_breakdowns/M5/breakdown.md">M5</a></td>
+</tr>
+<tr>
+<td>M5-I07</td>
+<td>Fit-tool formulas.</td>
+<td><code>f_pre = f0 c/(c - v)</code>, <code>f_post = f0 c/(c + v)</code>, <code>maxRoC = f0 v^2/(c d)</code> with c = 343. A rerun matched all 13 rows within 0.005.</td>
+<td>high</td>
+<td><a href="../03_breakdowns/M5/breakdown.md">M5</a></td>
+</tr>
+<tr>
+<td>M5-I08</td>
+<td>Model curve over time.</td>
+<td>Constant-velocity straight pass, <code>r = sqrt(d^2 + (v (t - t0))^2)</code>, as in section 6, S2.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M5/breakdown.md">M5</a></td>
+</tr>
+<tr>
+<td>M5-I09</td>
+<td>Does the fit tool use emission time?</td>
+<td>Not shown. The readouts are asymptotes and the CPA slope, which do not tell the two apart.</td>
+<td>low</td>
+<td><a href="../03_breakdowns/M5/breakdown.md">M5</a></td>
+</tr>
+<tr>
+<td>M5-I14</td>
+<td>Fit-tool spectrogram settings.</td>
+<td>A long FFT of about 4 to 8 s with heavy overlap, 0.1 to 0.25 Hz bins.</td>
+<td>low</td>
+<td><a href="../03_breakdowns/M5/breakdown.md">M5</a></td>
+</tr>
+<tr>
+<td>M5-I15</td>
+<td>Slider ranges and steps.</td>
+<td>f0 0.5 Hz, v 0.5 m/s, d 5 m, t0 0.1 s steps. Ranges not shown.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M5/breakdown.md">M5</a></td>
+</tr>
+<tr>
+<td>M5-I18</td>
+<td>Is f0 the blade-pass fundamental?</td>
+<td>Yes. The 100 to 200 Hz trace fits a propeller blade-pass tone.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M5/breakdown.md">M5</a></td>
+</tr>
+<tr>
+<td>M11-I10</td>
+<td>How the line was traced.</td>
+<td>Manual clicks on the spectrogram, exported as time-frequency pairs and interpolated linearly.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M11/breakdown.md">M11</a></td>
+</tr>
+</tbody>
+</table>
+<h3 id="s3-acoustic-geometry-and-propagation_1">S3. Acoustic geometry and propagation</h3>
+<table>
+<thead>
+<tr>
+<th>Ids</th>
+<th>Question</th>
+<th>Best guess</th>
+<th>Confidence</th>
+<th>Source</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>M3-I17</td>
+<td>CPA time in the worked example. Conflict. 22:46:34 is stated at 00:06:24 and shown in the track-point panel at 00:06:29. 22:46:36 is stated at 00:05:32 and shown at 00:05:36. The delayed time is 22:46:46 [shown 00:06:32].</td>
+<td>22:46:36. The delay is 3364.77 / 343 = 9.81 s. 22:46:36 + 9.81 s rounds to 22:46:46, while 22:46:34 + 9.81 s gives 22:46:44. A 12 s delay would need c = 280 m/s.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M3/breakdown.md">M3</a></td>
+</tr>
+<tr>
+<td>M3-I01</td>
+<td>Can a rebuild reproduce fid 43956's 22:46:46 and 3364.77 m?</td>
+<td>Yes, given the grid point's coordinates, which are not shown.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M3/breakdown.md">M3</a></td>
+</tr>
+<tr>
+<td>M3-I09, M3-I10, M3-I11, M3-I13, M3-I14</td>
+<td>Formula chain for the delayed CPA.</td>
+<td><code>z_obs = DEM(lat, lon)</code>, <code>z_ac = alt_ft * 0.3048</code>, <code>d = sqrt(h^2 + (z_ac - z_obs)^2)</code>, <code>t_delayed = t_cpa + d / c</code>. The example gives a height difference of 1144.6 m, a horizontal distance of 3164 m, and a 9.8 s delay.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M3/breakdown.md">M3</a></td>
+</tr>
+<tr>
+<td>M3-I12, M3-I19</td>
+<td>CPA definition and search.</td>
+<td><code>argmin</code> of 3D distance over the 1 s points, with no sub-second interpolation, since the delayed times are whole seconds.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M3/breakdown.md">M3</a></td>
+</tr>
+<tr>
+<td>M3-I20</td>
+<td>Rounding of delayed times.</td>
+<td>Rounded to the nearest second for display and stored as a time string.</td>
+<td>low</td>
+<td><a href="../03_breakdowns/M3/breakdown.md">M3</a></td>
+</tr>
+<tr>
+<td>M3-I21, M6-I22, M8-I14</td>
+<td>Altitude datum.</td>
+<td>ADS-B altitude (barometric or geometric) treated as height above mean sea level without pressure correction, minus DEM elevation.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M3/breakdown.md">M3</a>, <a href="../03_breakdowns/M6/breakdown.md">M6</a>, <a href="../03_breakdowns/M8/breakdown.md">M8</a></td>
+</tr>
+<tr>
+<td>M3-I04, M3-I05, M3-I22</td>
+<td>DEM resolution, units, and source.</td>
+<td>A 1 km mosaic, from the layer name, in metres, resampled from a public DEM such as SRTM or Copernicus GLO-90. The project has <code>download DEM.py</code> [shown 00:02:08].</td>
+<td>medium for 1 km and metres, low for the source</td>
+<td><a href="../03_breakdowns/M3/breakdown.md">M3</a></td>
+</tr>
+<tr>
+<td>M3-I24</td>
+<td>How horizontal distance is computed.</td>
+<td>Geodesic or local-projected horizontal distance plus height difference, earth curvature ignored. <code>v31.py</code> uses a flat-earth 111,320 m per degree conversion for the Doppler geometry [shown 00:02:08].</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M3/breakdown.md">M3</a></td>
+</tr>
+<tr>
+<td>M3-I25</td>
+<td>A looping track can pass a point twice.</td>
+<td>One global minimum per flight per point, so a second pass is lost.</td>
+<td>low</td>
+<td><a href="../03_breakdowns/M3/breakdown.md">M3</a></td>
+</tr>
+<tr>
+<td>M3-I18, M5-I04, M5-I17, M7-I06, M8-I13</td>
+<td>Speed of sound in the pipeline.</td>
+<td>A constant 343 m/s with no temperature correction. The demos show 343 [shown 00:16:09], and the fit readouts back-solve to 343. <code>v31.py</code> subtracts wind, so "no wind correction" (M5-I17, M8-I13) does not hold for that script.</td>
+<td>high for the demos and fit tool, medium for the pipeline</td>
+<td><a href="../03_breakdowns/M3/breakdown.md">M3</a>, <a href="../03_breakdowns/M5/breakdown.md">M5</a>, <a href="../03_breakdowns/M7/breakdown.md">M7</a>, <a href="../03_breakdowns/M8/breakdown.md">M8</a></td>
+</tr>
+<tr>
+<td>M1-I14</td>
+<td>Values of <code>C_SOUND</code>, <code>KT_TO_MS</code>, <code>FT_TO_M</code>, <code>FPM_TO_MS</code>.</td>
+<td>343, 0.514444, 0.3048, 0.00508.</td>
+<td>medium for <code>C_SOUND</code>, high for unit factors</td>
+<td><a href="../03_breakdowns/M1/breakdown.md">M1</a></td>
+</tr>
+<tr>
+<td>M1-I13</td>
+<td>Wind data source.</td>
+<td>Hourly surface observations (METAR or ASOS, such as the Iowa Environmental Mesonet), given the fields <code>sknt</code>, <code>drct</code>, <code>valid</code>.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M1/breakdown.md">M1</a></td>
+</tr>
+<tr>
+<td>M6-I02, M6-I11</td>
+<td>Slant to horizontal conversion.</td>
+<td><code>d_h = sqrt(d_slant^2 - (h_aircraft_msl - h_ground)^2)</code>.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M6/breakdown.md">M6</a></td>
+</tr>
+<tr>
+<td>M7-I04</td>
+<td>Coordinate frame for 3D geometry.</td>
+<td>Local east-north-up metres around the candidate, with ADS-B altitude and DEM elevation. <code>v31.py</code> does this with a flat-earth conversion [shown 00:02:08].</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M7/breakdown.md">M7</a></td>
+</tr>
+<tr>
+<td>M8-I09</td>
+<td>How <code>t_r = t_e + r(t_e)/c</code> is solved.</td>
+<td>Fixed-point iteration from <code>t_e = t_r</code>. The breakdown guessed 3 to 5 iterations. <code>solve_emission_time_vec</code> uses <code>iters=6</code> [shown 00:02:08].</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M8/breakdown.md">M8</a></td>
+</tr>
+<tr>
+<td>M8-I03</td>
+<td>Do the demo rows satisfy the emission identity?</td>
+<td>Yes, to within 1 ms: 0.000, 14.999, and 25.000 s.</td>
+<td>high</td>
+<td><a href="../03_breakdowns/M8/breakdown.md">M8</a></td>
+</tr>
+</tbody>
+</table>
+<h3 id="s4-candidate-grid-and-constraint-filters_1">S4. Candidate grid and constraint filters</h3>
+<table>
+<thead>
+<tr>
+<th>Ids</th>
+<th>Question</th>
+<th>Best guess</th>
+<th>Confidence</th>
+<th>Source</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>M3-I23</td>
+<td>Grid construction.</td>
+<td>A regular 200 m lattice in a metric projected CRS, clipped to a 10 km buffer of each track, generated per flight.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M3/breakdown.md">M3</a></td>
+</tr>
+<tr>
+<td>M3-I27</td>
+<td>Are grids aligned across flights?</td>
+<td>One shared global lattice, so points from different flights coincide and merge into <code>gridpoints_heard_multiple</code>.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M3/breakdown.md">M3</a></td>
+</tr>
+<tr>
+<td>M3-I26, M4-I13</td>
+<td>Test-area extent and scaling.</td>
+<td>The rectangle is a demo. The full run tiles the US or works per flight. M4-I13 guessed a box around the true location. M3's example flight sits at 33.13 N, -85.96 in east Alabama [shown 00:04:26], about 1,300 km from Oyster Bay, so the test area is not around the answer.</td>
+<td>low</td>
+<td><a href="../03_breakdowns/M3/breakdown.md">M3</a>, <a href="../03_breakdowns/M4/breakdown.md">M4</a></td>
+</tr>
+<tr>
+<td>M3-I08</td>
+<td>Place name of the example.</td>
+<td>East Alabama, near 33.13 N, -85.96.</td>
+<td>high</td>
+<td><a href="../03_breakdowns/M3/breakdown.md">M3</a></td>
+</tr>
+<tr>
+<td>M3-I06, M4-I02</td>
+<td>How lists pair flights with times.</td>
+<td>Comma-separated strings, paired by position, in flight-processing order rather than time order.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M3/breakdown.md">M3</a>, <a href="../03_breakdowns/M4/breakdown.md">M4</a></td>
+</tr>
+<tr>
+<td>M3-I28, M4-I10</td>
+<td>Times past midnight.</td>
+<td>UTC times roll into September 9. The CPA Timeline counts seconds from midnight of the target day, so 26:20:51 is 02:20:51 next day. Store epoch seconds.</td>
+<td>high (M4-I10), medium (M3-I28)</td>
+<td><a href="../03_breakdowns/M3/breakdown.md">M3</a>, <a href="../03_breakdowns/M4/breakdown.md">M4</a></td>
+</tr>
+<tr>
+<td>M4-I01</td>
+<td>Is <code>retarded_cpa_times</code> the "delayed CPA time"?</td>
+<td>Yes.</td>
+<td>high</td>
+<td><a href="../03_breakdowns/M4/breakdown.md">M4</a></td>
+</tr>
+<tr>
+<td>M4-I03, M4-I11, M6-I17</td>
+<td>Which pairs are kept per point?</td>
+<td>Every qualifying (flight A, flight B) pair. A point passes if any pair passes the offset and silence tests. M10 groups by flight pair [shown 00:21:26], so the pair must be stored.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M4/breakdown.md">M4</a>, <a href="../03_breakdowns/M6/breakdown.md">M6</a></td>
+</tr>
+<tr>
+<td>M4-I04, M4-I14</td>
+<td>Role of the CPA Timeline tool, and why its example differs from the QGIS point.</td>
+<td>An illustration, not the filter. The timeline shows 10 lines and the QGIS point lists 8 flights, so they are different points.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M4/breakdown.md">M4</a></td>
+</tr>
+<tr>
+<td>M4-I05, M4-I06</td>
+<td>Order of the events and distinct flights.</td>
+<td>The earlier event is E1 and the pair must use different flights. M6 states "green, then pink 920 seconds later" [stated 00:10:49], which fixes the order.</td>
+<td>high for order, medium for distinct flights</td>
+<td><a href="../03_breakdowns/M4/breakdown.md">M4</a></td>
+</tr>
+<tr>
+<td>M4-I08, M6-I05, M6-I13</td>
+<td>Tolerance on the 920 s gap.</td>
+<td><code>abs((t2 - t1) - 920) &lt;= 5</code> on the difference.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M4/breakdown.md">M4</a>, <a href="../03_breakdowns/M6/breakdown.md">M6</a></td>
+</tr>
+<tr>
+<td>M4-I12</td>
+<td>Is the recording time restricted in M4?</td>
+<td>No. The example timeline spans about 18:00 to 02:40.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M4/breakdown.md">M4</a></td>
+</tr>
+<tr>
+<td>M4-I15</td>
+<td>Algorithm for the offset check.</td>
+<td>Sort each point's times and binary-search for t + 920 ± 5, O(n log n) per point.</td>
+<td>high that it works, low that it matches</td>
+<td><a href="../03_breakdowns/M4/breakdown.md">M4</a></td>
+</tr>
+<tr>
+<td>M6-I06, M6-I19</td>
+<td>Point spacing in the slant-distance band.</td>
+<td>The 200 m grid clipped to the band. The airfield close-up shows a regular grid [shown 00:11:20].</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M6/breakdown.md">M6</a></td>
+</tr>
+<tr>
+<td>M6-I09, M6-I14</td>
+<td>Are the pairing and silence times delayed by sound travel?</td>
+<td>Yes, delayed CPA times with c near 343 m/s.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M6/breakdown.md">M6</a></td>
+</tr>
+<tr>
+<td>M6-I10</td>
+<td>Filter logic in symbols.</td>
+<td>As in section 6, S4.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M6/breakdown.md">M6</a></td>
+</tr>
+<tr>
+<td>M6-I15</td>
+<td>Is the silence threshold per point or a range bound?</td>
+<td>Per point, the CPA distances of the matched pair, not the 7800 m upper bound.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M6/breakdown.md">M6</a></td>
+</tr>
+<tr>
+<td>M6-I16</td>
+<td>Which flights count in the silence test?</td>
+<td>Propeller flights only, since jets were dropped at ingest.</td>
+<td>low</td>
+<td><a href="../03_breakdowns/M6/breakdown.md">M6</a></td>
+</tr>
+<tr>
+<td>M6-I18</td>
+<td>Bounds of the silence window.</td>
+<td>Strictly between the two CPA times, with a few seconds of margin.</td>
+<td>low</td>
+<td><a href="../03_breakdowns/M6/breakdown.md">M6</a></td>
+</tr>
+<tr>
+<td>M6-I20</td>
+<td>Window length. Conflict. M6's CPA Timeline reads 18:17:55 to 18:33:25, a 930 s span, with "Window length (s): 920" [shown 00:12:29]. All four M4 readouts span exactly 920 s [shown 00:07:13 to 00:07:30].</td>
+<td>The display pads or rounds the window. M4 shows the tool's normal behaviour.</td>
+<td>low</td>
+<td><a href="../03_breakdowns/M6/breakdown.md">M6</a></td>
+</tr>
+<tr>
+<td>M6-I21</td>
+<td>Exact counts.</td>
+<td>73,000 and 15,000 are rounded. The layer name <code>15113_candidate_...</code> may be an id, though 15,113 is within 1% of the stated 15,000 and may be the exact count.</td>
+<td>low</td>
+<td><a href="../03_breakdowns/M6/breakdown.md">M6</a></td>
+</tr>
+<tr>
+<td>M11-I13</td>
+<td>Candidate grid for the single event.</td>
+<td>Points at the measured slant distance on a 200 m grid. 380,127 points over 253 flights is about 1,500 per flight.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M11/breakdown.md">M11</a></td>
+</tr>
+</tbody>
+</table>
+<h3 id="s5-doppler-curve-forward-model_1">S5. Doppler curve forward model</h3>
+<table>
+<thead>
+<tr>
+<th>Ids</th>
+<th>Question</th>
+<th>Best guess</th>
+<th>Confidence</th>
+<th>Source</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>M7-I02, M8-I06</td>
+<td>Radial-velocity formula.</td>
+<td><code>v_r = v . (p_aircraft - p_observer) / abs(p_aircraft - p_observer)</code>. <code>v31.py</code> computes the same dot product with a unit vector from candidate to aircraft [shown 00:02:08].</td>
+<td>high</td>
+<td><a href="../03_breakdowns/M7/breakdown.md">M7</a>, <a href="../03_breakdowns/M8/breakdown.md">M8</a></td>
+</tr>
+<tr>
+<td>M7-I09, M8-I15</td>
+<td>Sign convention.</td>
+<td>v_r positive when receding, <code>f = f0 c/(c + v_r)</code>, moving source and still observer.</td>
+<td>high</td>
+<td><a href="../03_breakdowns/M7/breakdown.md">M7</a>, <a href="../03_breakdowns/M8/breakdown.md">M8</a></td>
+</tr>
+<tr>
+<td>M7-I01, M8-I10</td>
+<td>Track interpolation and velocity.</td>
+<td>Linear interpolation of lat, lon, and altitude in time, converted to local metres. <code>v31.py</code> takes velocity from <code>gs_kt</code>, <code>track_deg</code>, and <code>vs_fpm</code> [shown 00:02:08], which settles the velocity half.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M7/breakdown.md">M7</a>, <a href="../03_breakdowns/M8/breakdown.md">M8</a></td>
+</tr>
+<tr>
+<td>M7-I05, M8-I11</td>
+<td>The demo geometry does not close. (0, 980, 1020) has length 1414.5 m, not 1419 m, and v_r is 0 despite a 16.8 m/s y-component.</td>
+<td>The observer is not at the origin or has a small height. The demo is illustrative.</td>
+<td>medium (M7-I05), low (M8-I11)</td>
+<td><a href="../03_breakdowns/M7/breakdown.md">M7</a>, <a href="../03_breakdowns/M8/breakdown.md">M8</a></td>
+</tr>
+<tr>
+<td>M7-I07</td>
+<td>Does f0 change during an event?</td>
+<td>Held constant per event.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M7/breakdown.md">M7</a></td>
+</tr>
+<tr>
+<td>M7-I08, M8-I12</td>
+<td>Time span and step of the model.</td>
+<td>About ±60 s around CPA, evaluated at spectrogram frame times 0.1 to 0.5 s apart.</td>
+<td>low</td>
+<td><a href="../03_breakdowns/M7/breakdown.md">M7</a>, <a href="../03_breakdowns/M8/breakdown.md">M8</a></td>
+</tr>
+<tr>
+<td>M8-I01</td>
+<td>Demo reception times.</td>
+<td>-25 s to +25 s in 5 s steps, 11 steps.</td>
+<td>high</td>
+<td><a href="../03_breakdowns/M8/breakdown.md">M8</a></td>
+</tr>
+<tr>
+<td>M8-I02</td>
+<td>Demo track.</td>
+<td>A straight constant-velocity line, x = 140 t and y = 980 + 16.8 t.</td>
+<td>high</td>
+<td><a href="../03_breakdowns/M8/breakdown.md">M8</a></td>
+</tr>
+<tr>
+<td>M8-I17</td>
+<td>Does the 5 s demo show the full shape difference?</td>
+<td>No. The coarse demo understates it, and the real-data panel shows it clearly.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M8/breakdown.md">M8</a></td>
+</tr>
+<tr>
+<td>M3-I16, M7-I03, M9-I09</td>
+<td>Implementation language.</td>
+<td>Python with NumPy. The S3 and S5 functions in <code>v31.py</code> are Python [shown 00:02:08]. The M3 grid code and the S6 scorer are not shown.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M3/breakdown.md">M3</a>, <a href="../03_breakdowns/M7/breakdown.md">M7</a>, <a href="../03_breakdowns/M9/breakdown.md">M9</a></td>
+</tr>
+<tr>
+<td>M1-I04</td>
+<td>Which IDE?</td>
+<td>PyCharm, from the project panel and interpreter label.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M1/breakdown.md">M1</a></td>
+</tr>
+<tr>
+<td>M8-I08</td>
+<td>How the demo formulas are typeset.</td>
+<td>KaTeX or MathJax.</td>
+<td>low</td>
+<td><a href="../03_breakdowns/M8/breakdown.md">M8</a></td>
+</tr>
+<tr>
+<td>D-03</td>
+<td>What do <code>frame_centers_s</code>, <code>point_offset</code>, <code>dt_range</code>, and <code>oversample=3</code> mean in <code>compute_dense_doppler_curve</code>?</td>
+<td><code>frame_centers_s</code> are spectrogram frame times. <code>point_offset</code> maps audio time to UTC for one candidate. <code>dt_range</code> is the sweep, so the curve covers frames plus the sweep margin. <code>oversample=3</code> samples three points per frame so a <code>dt</code> shift is a lookup.</td>
+<td>low</td>
+<td><a href="../03_breakdowns/M1/breakdown.md">M1</a></td>
+</tr>
+</tbody>
+</table>
+<h3 id="s6-spectrogram-scoring-and-ranking_1">S6. Spectrogram scoring and ranking</h3>
+<table>
+<thead>
+<tr>
+<th>Ids</th>
+<th>Question</th>
+<th>Best guess</th>
+<th>Confidence</th>
+<th>Source</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>M9-I04</td>
+<td>Curve score formula.</td>
+<td><code>S(dt, f0) = sum over k of B(t_k + dt, f_model(t_k; f0))</code>.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M9/breakdown.md">M9</a></td>
+</tr>
+<tr>
+<td>M9-I05</td>
+<td>E1 score.</td>
+<td>The maximum over <code>dt</code> in [-a, a] and f0 in f0_meas ± b.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M9/breakdown.md">M9</a></td>
+</tr>
+<tr>
+<td>M9-I06</td>
+<td>E2 score.</td>
+<td>The maximum over f0 only, at E1's best <code>dt</code>, with E2 at its geometry-predicted time relative to E1.</td>
+<td>high</td>
+<td><a href="../03_breakdowns/M9/breakdown.md">M9</a></td>
+</tr>
+<tr>
+<td>M9-I12</td>
+<td>How brightness is sampled along the curve.</td>
+<td>The nearest STFT bin per time column, in dB.</td>
+<td>low</td>
+<td><a href="../03_breakdowns/M9/breakdown.md">M9</a></td>
+</tr>
+<tr>
+<td>M9-I13, M10-I10, M10-I11</td>
+<td>Score normalisation, and why scores go negative to about -5.5.</td>
+<td>A mean z-score of the bins under the curve against background, so a curve over below-average pixels scores negative.</td>
+<td>low (M9-I13, M10-I10), medium (M10-I11)</td>
+<td><a href="../03_breakdowns/M9/breakdown.md">M9</a>, <a href="../03_breakdowns/M10/breakdown.md">M10</a></td>
+</tr>
+<tr>
+<td>M9-I14, M10-I19</td>
+<td>Spectrogram settings for scoring and overlays.</td>
+<td>About a 1 s window, 50% overlap, 50 to 250 Hz, given pixels of about 1 s by 2 Hz. M10's guess is the S2 measurement settings.</td>
+<td>low (M9-I14), medium (M10-I19)</td>
+<td><a href="../03_breakdowns/M9/breakdown.md">M9</a>, <a href="../03_breakdowns/M10/breakdown.md">M10</a></td>
+</tr>
+<tr>
+<td>M9-I15</td>
+<td>Does E2 get any time slack?</td>
+<td>None. The speech says "entirely locked".</td>
+<td>high</td>
+<td><a href="../03_breakdowns/M9/breakdown.md">M9</a></td>
+</tr>
+<tr>
+<td>M5-I16, M9-I10, M9-I11, M11-I12</td>
+<td>Sweep ranges.</td>
+<td><code>dt</code> ±3 s in 0.05 s steps, from a slider at -3.05 s. f0 ±2 Hz in 0.5 Hz steps. The single-event search uses the same sweep.</td>
+<td>medium (M5-I16, M9-I10, M11-I12), low (M9-I11)</td>
+<td><a href="../03_breakdowns/M5/breakdown.md">M5</a>, <a href="../03_breakdowns/M9/breakdown.md">M9</a>, <a href="../03_breakdowns/M11/breakdown.md">M11</a></td>
+</tr>
+<tr>
+<td>M5-I05, M8-I04, M8-I05, M11-I05</td>
+<td>What do the <code>dt</code> and f0 sliders mean?</td>
+<td>A time offset and f0 applied to the modelled curve, the same as the S6 sweep that absorbs measurement error. On real data the correct curve needed -0.60 s. The single-event panels show small <code>dt</code> values, so the sweep stays.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M5/breakdown.md">M5</a>, <a href="../03_breakdowns/M8/breakdown.md">M8</a>, <a href="../03_breakdowns/M11/breakdown.md">M11</a></td>
+</tr>
+<tr>
+<td>M9-I17, M10-I14</td>
+<td>How E1 and E2 scores combine, and how the combined heat map is made.</td>
+<td>M10 shows <code>match_score = score_1 + score_2</code> [shown 00:21:39], which answers M9-I17. The combined heat map is the same per-point sum.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M9/breakdown.md">M9</a>, <a href="../03_breakdowns/M10/breakdown.md">M10</a></td>
+</tr>
+<tr>
+<td>M9-I18</td>
+<td>Do the 8.89 and 8.43 labels update with the slider?</td>
+<td>No. They stay fixed from dt 0.74 s to -16.46 s, so they are precomputed best scores.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M9/breakdown.md">M9</a></td>
+</tr>
+<tr>
+<td>M9-I03, M9-I16</td>
+<td>How the 100 m resample is built.</td>
+<td>A fresh 100 m grid over the union of survivor cells, deduplicated, with S3 and S5 rerun for new points. Four sub-points per cell would give 60,000, not 30,000 to 40,000.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M9/breakdown.md">M9</a></td>
+</tr>
+<tr>
+<td>M9-I01</td>
+<td>Does the correct point score near the top of its pair's cluster?</td>
+<td>Yes. M10 shows it leading.</td>
+<td>high</td>
+<td><a href="../03_breakdowns/M9/breakdown.md">M9</a></td>
+</tr>
+<tr>
+<td>M9-I07</td>
+<td>Where does 141 m come from?</td>
+<td>100 × sqrt(2) m, half the diagonal of a 200 m cell.</td>
+<td>high</td>
+<td><a href="../03_breakdowns/M9/breakdown.md">M9</a></td>
+</tr>
+<tr>
+<td>M8-I16, M9-I20</td>
+<td>Compute cost and batching.</td>
+<td>NumPy vectorised over candidates, only over each flight's audible window, over a precomputed spectrogram, on one machine for hours.</td>
+<td>low</td>
+<td><a href="../03_breakdowns/M8/breakdown.md">M8</a>, <a href="../03_breakdowns/M9/breakdown.md">M9</a></td>
+</tr>
+<tr>
+<td>M10-I03, M10-I16</td>
+<td>Pair 3's E2 score is cut off.</td>
+<td>15.04 - 7.90 = 7.14.</td>
+<td>high</td>
+<td><a href="../03_breakdowns/M10/breakdown.md">M10</a></td>
+</tr>
+<tr>
+<td>M10-I04</td>
+<td>Pair 5's E2 score is not shown.</td>
+<td>14.85 - 5.75 = 9.10.</td>
+<td>high</td>
+<td><a href="../03_breakdowns/M10/breakdown.md">M10</a></td>
+</tr>
+<tr>
+<td>M10-I07</td>
+<td>What does the ranking take as input besides scores?</td>
+<td>The observed spectrogram windows and the S5 model curves, for the overlays.</td>
+<td>high</td>
+<td><a href="../03_breakdowns/M10/breakdown.md">M10</a></td>
+</tr>
+<tr>
+<td>M10-I09, M10-I12, M10-I13</td>
+<td>The fine rerun.</td>
+<td>The 100 m grid is too coarse to pinpoint the spot. The rerun uses 10 to 25 m spacing over about 1 to 2 km around the leader and re-sweeps <code>dt</code> and f0 per point.</td>
+<td>medium (M10-I09, M10-I13), low (M10-I12)</td>
+<td><a href="../03_breakdowns/M10/breakdown.md">M10</a></td>
+</tr>
+<tr>
+<td>M10-I17</td>
+<td>Why the top N is 7.</td>
+<td>A fixed command-line parameter.</td>
+<td>low</td>
+<td><a href="../03_breakdowns/M10/breakdown.md">M10</a></td>
+</tr>
+<tr>
+<td>M11-I04</td>
+<td>Why single-event scores are negative.</td>
+<td>They are a negated distance or error to the traced line, so the best is closest to zero.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M11/breakdown.md">M11</a></td>
+</tr>
+<tr>
+<td>M11-I06, M11-I11</td>
+<td>Distance metric to the traced line.</td>
+<td><code>-mean(abs(f_model(t) - f_traced(t)))</code> in Hz over the traced points.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M11/breakdown.md">M11</a></td>
+</tr>
+<tr>
+<td>M4-I07, M5-I10, M8-I07, M9-I08, M10-I08, M11-I07</td>
+<td>Plot library of the custom pages.</td>
+<td>Plotly, possibly Dash, from the camera, zoom, pan, box, and lasso toolbar.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M4/breakdown.md">M4</a>, <a href="../03_breakdowns/M5/breakdown.md">M5</a>, <a href="../03_breakdowns/M8/breakdown.md">M8</a>, <a href="../03_breakdowns/M9/breakdown.md">M9</a>, <a href="../03_breakdowns/M10/breakdown.md">M10</a>, <a href="../03_breakdowns/M11/breakdown.md">M11</a></td>
+</tr>
+<tr>
+<td>D-04</td>
+<td>Which time window does each event score over?</td>
+<td>The panel spans, 5690 to 5875 s for E1 and 6630 to 6735 s for E2. The page text says the panels are "zoomed to their own real scored window" [shown 00:19:27].</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M9/breakdown.md">M9</a></td>
+</tr>
+</tbody>
+</table>
+<h3 id="s7-map-review-and-ground-truth_1">S7. Map review and ground truth</h3>
+<table>
+<thead>
+<tr>
+<th>Ids</th>
+<th>Question</th>
+<th>Best guess</th>
+<th>Confidence</th>
+<th>Source</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>M3-I07, M6-I07, M9-I19</td>
+<td>Map CRS.</td>
+<td>EPSG:3857 Web Mercator. M6's measure coordinates decode to northeast Nebraska and southern Minnesota. M9's fall in the central US.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M3/breakdown.md">M3</a>, <a href="../03_breakdowns/M6/breakdown.md">M6</a>, <a href="../03_breakdowns/M9/breakdown.md">M9</a></td>
+</tr>
+<tr>
+<td>M6-I08, M6-I23</td>
+<td>Layer file format.</td>
+<td>GeoPackage or GeoJSON, shown in EPSG:3857. The <code>gpkg</code> script names [shown 00:02:08] favour GeoPackage.</td>
+<td>low</td>
+<td><a href="../03_breakdowns/M6/breakdown.md">M6</a></td>
+</tr>
+<tr>
+<td>M6-I03</td>
+<td>Which hub airport is shown at 00:11:30?</td>
+<td>Dallas/Fort Worth International, from the runway layout.</td>
+<td>low</td>
+<td><a href="../03_breakdowns/M6/breakdown.md">M6</a></td>
+</tr>
+<tr>
+<td>M6-I04</td>
+<td>What does the 167.101 m measurement show?</td>
+<td>Not said.</td>
+<td>low</td>
+<td><a href="../03_breakdowns/M6/breakdown.md">M6</a></td>
+</tr>
+<tr>
+<td>M10-I05</td>
+<td>Where is the leader?</td>
+<td>The north shore of Long Island, New York. Google Maps later shows Oyster Bay [shown 00:25:30].</td>
+<td>high</td>
+<td><a href="../03_breakdowns/M10/breakdown.md">M10</a></td>
+</tr>
+<tr>
+<td>M10-I06</td>
+<td>Do the single-event ridges cross at the peak?</td>
+<td>Yes.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M10/breakdown.md">M10</a></td>
+</tr>
+<tr>
+<td>M10-I15</td>
+<td>Heat-map colour scale.</td>
+<td>A linear min-to-max stretch on a spectral ramp, no interpolation.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M10/breakdown.md">M10</a></td>
+</tr>
+<tr>
+<td>M11-I02, M11-I03</td>
+<td>Distances between the final coordinate 40.8767282, -73.5264340 [shown 00:25:27], the two-event leader 40.876466, -73.524951 [shown 00:21:42], and the single-event leader 40.877922, -73.531941 [shown 00:23:31].</td>
+<td>Haversine distances, rerun for this document, are 128 m from the final point to the two-event leader, 482 m to the single-event leader, and 610 m between the two leaders. The breakdowns gave about 130, 480, and 600 m. The final point comes from the finer heat map and a manual move to the bank, so it differs from the 100 m leader.</td>
+<td>high</td>
+<td><a href="../03_breakdowns/M11/breakdown.md">M11</a></td>
+</tr>
+<tr>
+<td>M11-I15</td>
+<td>What does the 28.122 m measurement show?</td>
+<td>A grid spacing check or a point-to-shore distance.</td>
+<td>low</td>
+<td><a href="../03_breakdowns/M11/breakdown.md">M11</a></td>
+</tr>
+<tr>
+<td>M11-I16</td>
+<td>Which result feeds the Street View check?</td>
+<td>The locked two-event layer, since <code>va_locked_con...</code> is the checked layer [shown 00:25:20].</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M11/breakdown.md">M11</a></td>
+</tr>
+<tr>
+<td>M11-I17</td>
+<td>Street View heading and pitch for the match.</td>
+<td>Roughly north-east across Oyster Bay harbour from Bayview Ave.</td>
+<td>low</td>
+<td><a href="../03_breakdowns/M11/breakdown.md">M11</a></td>
+</tr>
+</tbody>
+</table>
+<h3 id="s8-countermeasure-tests_1">S8. Countermeasure tests</h3>
+<table>
+<thead>
+<tr>
+<th>Ids</th>
+<th>Question</th>
+<th>Best guess</th>
+<th>Confidence</th>
+<th>Source</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>M12-I01, M12-I03, M12-I07</td>
+<td>High-pass cutoff and roll-off.</td>
+<td>About 400 Hz with Audacity's default roll-off, given the greyed band ending near 400 to 460 Hz.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M12/breakdown.md">M12</a></td>
+</tr>
+<tr>
+<td>M12-I04, M12-I08</td>
+<td>Amplify gain.</td>
+<td>+30 to +50 dB with clipping allowed, given the saturated spectrogram.</td>
+<td>low</td>
+<td><a href="../03_breakdowns/M12/breakdown.md">M12</a></td>
+</tr>
+<tr>
+<td>M12-I05, M12-I09</td>
+<td>Source of the synthetic curve played on the JBL.</td>
+<td>A tone generated from the S5 model, or a clip of a real flyover.</td>
+<td>low</td>
+<td><a href="../03_breakdowns/M12/breakdown.md">M12</a></td>
+</tr>
+<tr>
+<td>M12-I06, M12-I10</td>
+<td>Do the M12 spectrograms use the S2 and S6 settings?</td>
+<td>No. Audacity defaults with a zoomed band.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M12/breakdown.md">M12</a></td>
+</tr>
+<tr>
+<td>M12-I02, M12-I11</td>
+<td>Cause of the gap in the phone-call curve.</td>
+<td>Muting or voice-activity gating suppressed the curve until speech resumed.</td>
+<td>low</td>
+<td><a href="../03_breakdowns/M12/breakdown.md">M12</a></td>
+</tr>
+<tr>
+<td>M12-I12</td>
+<td>MP3 bitrate.</td>
+<td>Audacity default, 128 to 192 kbps.</td>
+<td>low</td>
+<td><a href="../03_breakdowns/M12/breakdown.md">M12</a></td>
+</tr>
+<tr>
+<td>M12-I13</td>
+<td>Phone codec and network.</td>
+<td>A standard iPhone cellular or FaceTime audio call.</td>
+<td>low</td>
+<td><a href="../03_breakdowns/M12/breakdown.md">M12</a></td>
+</tr>
+<tr>
+<td>M12-I14</td>
+<td>Does extra noise cancellation defeat the curve?</td>
+<td>Aggressive broadband denoise weakens it but may not remove it. Untested in the video.</td>
+<td>low</td>
+<td><a href="../03_breakdowns/M12/breakdown.md">M12</a></td>
+</tr>
+<tr>
+<td>M12-I15</td>
+<td>How much must a cut remove?</td>
+<td>Any cut that destroys the 920 s offset. One minute at a known time can still work.</td>
+<td>medium</td>
+<td><a href="../03_breakdowns/M12/breakdown.md">M12</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="9-suggested-improvements-for-the-rebuild">9. Suggested improvements for the rebuild</h2>
+<p>Nothing in this section comes from the video. These are proposals for the rebuild.</p>
+<p><strong>Data and storage.</strong></p>
+<ul>
+<li>Store every time as float64 UTC epoch seconds. Never store time strings or "26:20:51"-style hours.</li>
+<li>Divide <code>timestamp_ms</code> by 1000 when a trail uses it. The shown <code>standardize_rows</code> copies it unchanged.</li>
+<li>Partition the track Parquet by UTC hour and flight id. A time-window query, as in the single-event search, then reads one partition.</li>
+<li>Treat FR24 access as a risk. If historical trails are unavailable, OpenSky Network historical state vectors are a candidate source with similar fields.</li>
+<li>Record the source, version, and download date of the DEM, the ICAO table, and the wind data.</li>
+</ul>
+<p><strong>Geometry.</strong></p>
+<ul>
+<li>Build the grid on integer indices of one projected lattice, such as CONUS Albers. Points from different flights then merge by index instead of by coordinate matching.</li>
+<li>Find the CPA on segments between 1 s samples, not only at samples, and keep every local minimum so looping tracks yield several hits.</li>
+<li>Compute the speed of sound from the surface temperature in the same METAR feed, <code>c = 331.3 * sqrt(1 + T_celsius / 273.15)</code>. Make it a parameter and test the result's sensitivity to it.</li>
+<li>Keep the wind term that <code>v31.py</code> uses, and pick the observation nearest each flight's CPA time.</li>
+</ul>
+<p><strong>Measurement.</strong></p>
+<ul>
+<li>Replace the slider fit with an automatic ridge tracker and a least-squares fit of the ideal model. Derive the ranges from a residual threshold so they are reproducible.</li>
+<li>Save every event measurement in one config file, as in section 6, under version control.</li>
+</ul>
+<p><strong>Scoring.</strong></p>
+<ul>
+<li>Fix the normalisation. Z-score each frequency row against a local background, then average along the curve. Report the number of bins scored with each score.</li>
+<li>Score a band of ±1 bin around the curve to cut sensitivity to bin quantisation.</li>
+<li>Refine coarse to fine around the top points of each flight pair instead of densifying every survivor to 100 m.</li>
+<li>Precompute each candidate's Doppler factor once over the sweep margin, then apply <code>dt</code> and f0 as shifts and scales, as <code>compute_dense_doppler_curve</code> appears to do.</li>
+</ul>
+<p><strong>Verification.</strong></p>
+<ul>
+<li>Turn the video's numbers into unit tests: the 13 fit-tool readouts, the six demo rows, the 9.81 s delay, and <code>match_score = score_1 + score_2</code>.</li>
+<li>Synthesise a recording from a known flight and observer with S5, add noise, and check that the pipeline ranks the true point first.</li>
+<li>After a match, solve for the UTC time of the recording from the best <code>dt</code> and T1. Check it against the 8:37 PM UTC that the creator gives for E0.</li>
+<li>Run the silence filter over all aircraft, jets included, as a sensitivity check. Jets are louder, so the current filter may keep points it should drop.</li>
+</ul>
+<h2 id="10-proposed-layout-for-src">10. Proposed layout for src/</h2>
+<p>Organise the rebuild by system, so each module owns one body of domain knowledge. One shared module holds the typed records that cross system boundaries: <code>TrackPoint</code>, <code>Track1s</code>, <code>EventMeasurement</code>, <code>CpaHit</code>, <code>Candidate</code>, <code>ModelCurve</code>, and <code>PairScore</code>. One config file holds the constants and event measurements from section 6. Emission-time solving lives with geometry, because both S4's delayed CPA times and S5's curves depend on it. Interactive Plotly pages live under review, apart from the pipeline code they display. Tests mirror the systems and use the numbers the video shows as fixtures. Nothing under <code>src/</code> exists yet. This section only proposes the layout.</p>
+<pre><code class="language-text">src/
+  plane_geo/
+    config.py              constants, filter parameters, event measurements (loads events.toml)
+    records.py             typed records shared across systems
+    ingest/                S1
+      fr24_sweep.py        Phase 1 discovery with box splitting and query log
+      fr24_trails.py       Phase 2 trail download, standardize_rows, track log
+      aircraft_types.py    ICAO DOC 8643 load and jet filter
+      tracks.py            1 s resampling, velocity segments, time-window cut, Parquet IO
+    audio/                 S2
+      spectrogram.py       STFT with the band and window settings
+      ideal_doppler.py     constant-velocity model and fit-tool readouts
+      measurements.py      event records and traced lines
+    geometry/              S3
+      dem.py               elevation lookup
+      local_frame.py       flat-earth east-north-up conversion
+      cpa.py               CPA, slant distance, delayed CPA
+      emission.py          emission-time solve
+      wind.py              wind vector from surface observations
+    candidates/            S4
+      lattice.py           shared 200 m and 100 m lattices
+      offset_filter.py     920 s pairing
+      silence_filter.py    no flight between the events
+    doppler/               S5
+      forward_model.py     state interpolation and Doppler factor curves
+    scoring/               S6
+      brightness.py        spectrogram sampling and normalisation
+      line_distance.py     traced-line score
+      locked_pair.py       locked two-event sweep
+      densify.py           100 m and fine reruns
+      ranking.py           best point per flight pair
+    review/                S7
+      export_gpkg.py       layers for QGIS
+      heatmap.py           fine-grid rasters
+      pages/               Plotly pages: fit tool, CPA timeline, score scatter, top-N overlays
+    countermeasures/       S8
+      run_tests.py         apply each countermeasure and render spectrograms
+    cli.py                 one command per pipeline stage
+tests/
+  test_ideal_doppler.py    the 13 fit-tool readouts
+  test_forward_model.py    the six demo rows
+  test_cpa.py              the 9.81 s delay of the worked example
+  test_filters.py          offset and silence rules on a hand-built point
+  test_ranking.py          grouping by flight pair
+</code></pre><script type='module'>import m from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';m.initialize({startOnLoad:true,theme:'default'});</script></body></html>
