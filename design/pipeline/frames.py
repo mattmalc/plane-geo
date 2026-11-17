@@ -45,7 +45,7 @@ def scene_times(start: float, end: float, threshold: float) -> list[float]:
 def thumb(path: Path):
     from PIL import Image
     import numpy as np
-    return np.asarray(Image.open(path).convert("L").resize((64, 36)), dtype="float32")
+    return np.asarray(Image.open(path).convert("L").resize((256, 144)), dtype="float32")
 
 
 def dedupe(mid: str, max_diff: float, protect: set[str]) -> list[Path]:
